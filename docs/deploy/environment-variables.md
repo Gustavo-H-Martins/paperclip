@@ -210,4 +210,6 @@ These are set automatically by the server when invoking agents:
 | Variable | Description |
 |----------|-------------|
 | `ANTHROPIC_API_KEY` | Anthropic API key (for Claude Code adapter) |
+| `ANTHROPIC_AUTH_TOKEN` | Bearer token for an Anthropic-compatible endpoint (Claude Code adapter). See [Anthropic-Compatible Endpoints](/adapters/anthropic-compatible-endpoints). |
+| `ANTHROPIC_BASE_URL` | Root URL of an Anthropic-compatible endpoint (Claude Code adapter). See [Anthropic-Compatible Endpoints](/adapters/anthropic-compatible-endpoints). |
 | `OPENAI_API_KEY` | OpenAI API key (for Codex adapter) |

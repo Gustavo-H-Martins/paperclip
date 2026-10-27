@@ -23,6 +23,9 @@ subscription quota exhaustion merely because ACP labels them `limit`.
 - Either `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` in adapter or
   environment env (or host env), or a Claude Code subscription login
   available to the execution target
+- To use a third-party endpoint that implements the Anthropic Messages API,
+  set `ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN` instead. See
+  [Anthropic-Compatible Endpoints](/adapters/anthropic-compatible-endpoints)
 
 ## Configuration Fields
 

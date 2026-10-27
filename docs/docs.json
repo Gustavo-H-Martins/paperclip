@@ -101,6 +101,7 @@
             "pages": [
               "adapters/overview",
               "adapters/claude-local",
+              "adapters/anthropic-compatible-endpoints",
               "adapters/codex-local",
               "adapters/process",
               "adapters/http",
