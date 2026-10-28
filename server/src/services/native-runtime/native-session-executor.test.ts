@@ -13118,6 +13118,103 @@ describe("runnerd provider runtime wiring", () => {
     expect(state.createTransport).not.toHaveBeenCalled();
   });
 
+  it.each(["suspended", "backup", "codex", "missing-checkpoint", "checkpoint-binding-error", "foreign-task", "foreign-marker-session",
+    "missing-marker", "malformed-marker", "unknown-marker-schema", "active-owner", "foreign-prior-scope", "unsuspended-runner"] as const)(
+    "restores only an authorized externally persisted per-turn controller before ordinary resume: %s", async scenario => {
+    const prior = parseNativeExecutionInput({
+      ...scopedNativeExecution("per-turn-external-resume"),
+      schema: "paperclip.native-execution-input.v5",
+      executionMode: "default", planningContext: null, runtimeContext: nativeRuntimeContextFixture(),
+      provider: scenario === "codex" ? { kind: "codex", model: null, approvalPolicy: "never" }
+        : { kind: "opencode", model: "openrouter/deepseek/deepseek-v4-flash-0731", permissionMode: "allow" },
+      session: { ...execution.session, normalizedSessionId: "session-per-turn-external-resume",
+        driverKind: scenario === "codex" ? "codex_app_server" : "opencode_server",
+        lifecyclePolicy: { mode: "per_turn", idleTimeoutMs: null } },
+    });
+    const current = { ...prior, binding: { ...prior.binding, runId: `${prior.binding.runId}-next`,
+      issueId: scenario === "foreign-task" ? "another-task" : prior.binding.issueId } };
+    const identity = { runId: prior.binding.runId, normalizedSessionId: prior.session.normalizedSessionId!,
+      runnerInstanceId: "runner-per-turn-external-resume", environmentLeaseId: "lease-per-turn-external-resume",
+      turnId: "turn-prior", itemId: "item-prior" };
+    const root = await initializeScopedRunnerRoot(prior, identity.runnerInstanceId);
+    const controller = new DurablePrpControlPlane({ stateDirectory: join(root, "control-plane"), identity,
+      expectedRunnerVersion: "per-turn-fixture", expectedRunnerDigest: `sha256:${"a".repeat(64)}` });
+    let saved: import("../../vendor/paperclip-runner/index.js").DurablePrpCheckpoint | undefined;
+    controller.setCheckpointPersistence(async checkpoint => { saved = checkpoint; });
+    await controller.flushCheckpoint();
+    expect(JSON.parse(await readFile(join(root, "control-plane/control-plane-state.json"), "utf8")).schema)
+      .toBe("paperclip.runner.external-control-plane-state.v1");
+    if (scenario === "foreign-marker-session" || scenario === "unknown-marker-schema") {
+      const path = join(root, "control-plane/control-plane-state.json");
+      const marker = JSON.parse(await readFile(path, "utf8"));
+      if (scenario === "foreign-marker-session") marker.identity.normalizedSessionId = "another-session";
+      else marker.schema = "paperclip.runner.external-control-plane-state.v999";
+      await writeFile(path, JSON.stringify(marker));
+    }
+    if (scenario === "missing-marker") await rm(join(root, "control-plane/control-plane-state.json"));
+    if (scenario === "malformed-marker") await writeFile(join(root, "control-plane/control-plane-state.json"), "{");
+    if (scenario === "backup") {
+      const backupRoot = join(root, "failover-backups/current");
+      for (const directory of resolveNativeHarnessPersistenceProfile(prior).directories)
+        await mkdir(join(backupRoot, directory.name), { recursive: true });
+      await writeFile(join(backupRoot, "runner/runner-state.json"), JSON.stringify(durableRunnerState(identity, "suspended")));
+      await writeFile(join(backupRoot, "manifest.json"), JSON.stringify(buildNativeHarnessBackupManifest({
+        backupRoot, execution: prior, runnerInstanceId: identity.runnerInstanceId,
+        providerSessionIdentity: { providerSessionId: "provider-per-turn-resume", providerBackendSessionId: null,
+          providerSessionIdentity: null }, sourceProviderLeaseId: "sandbox-per-turn-resume",
+      })));
+    } else {
+      await mkdir(join(root, "runner"), { recursive: true });
+      await writeFile(join(root, "runner/runner-state.json"), JSON.stringify(durableRunnerState(identity,
+        scenario === "unsuspended-runner" ? "ready" : "suspended")));
+    }
+    const markerBefore = scenario === "missing-marker" ? null
+      : await readFile(join(root, "control-plane/control-plane-state.json"), "utf8");
+    const restore = vi.spyOn(runnerCheckpoint, "restoreNativeRunnerCheckpoint").mockImplementation(async (_db, binding, directory, sessionId) => {
+      expect(binding).toEqual({ companyId: prior.binding.companyId, issueId: current.binding.issueId, runId: prior.binding.runId });
+      expect(sessionId).toBe(prior.session.normalizedSessionId);
+      if (scenario === "missing-checkpoint" || binding.issueId !== prior.binding.issueId) return null;
+      if (scenario === "checkpoint-binding-error") throw new Error("native_runner_checkpoint_binding_mismatch");
+      saved!.restoreSessionDirectory(directory);
+      return saved!;
+    });
+    state.createBackend.mockClear();
+    state.createTransport.mockClear();
+    const admitted = new Error("per-turn resume reached tool authority");
+    state.toolAuthorityDefinitions.mockRejectedValueOnce(admitted);
+    try {
+      const persistedPrior = scenario === "foreign-prior-scope"
+        ? { ...prior, binding: { ...prior.binding, agentId: "another-agent" } } : prior;
+      const resume = createRunnerdBackend({ db: priorNativeRunDb(persistedPrior, scenario === "active-owner" ? "running" : "succeeded"), execution: current,
+        runnerInstanceId: "runner-next", runnerExecutionTarget: { kind: "remote", transport: "sandbox",
+          remoteCwd: "/workspace", runner: { execute: vi.fn() } } as never });
+      if (["suspended", "backup", "codex"].includes(scenario)) {
+        await expect(resume).rejects.toBe(admitted);
+        const restored = JSON.parse(await readFile(join(root, "control-plane/control-plane-state.json"), "utf8"));
+        expect(restored).toMatchObject({ schema: "paperclip.runner.durable.control-plane-state.v1", identity });
+      } else {
+        const reason = ["missing-checkpoint", "foreign-task"].includes(scenario) ? "native_runner_checkpoint_missing"
+          : scenario === "checkpoint-binding-error" ? "native_runner_checkpoint_binding_mismatch"
+          : scenario === "active-owner" ? "prior_owner_active"
+          : scenario === "foreign-prior-scope" ? "prior_owner_scope_mismatch"
+          : scenario === "unsuspended-runner" ? "prior_owner_terminal_state_indeterminate" : "durable_identity_unreadable";
+        await expect(resume).rejects.toThrow(reason);
+        if (["missing-checkpoint", "checkpoint-binding-error", "foreign-task"].includes(scenario))
+          expect(await readFile(join(root, "control-plane/control-plane-state.json"), "utf8")).toBe(markerBefore);
+      }
+      if (["foreign-marker-session", "missing-marker", "malformed-marker", "unknown-marker-schema"].includes(scenario)) expect(restore).not.toHaveBeenCalled();
+      else expect(restore).toHaveBeenCalledOnce();
+      expect(state.createBackend).not.toHaveBeenCalled();
+      expect(state.createTransport).not.toHaveBeenCalled();
+      expect(existsSync(join(isolatedStateDirectory, "quarantine"))).toBe(
+        ["foreign-marker-session", "missing-marker", "malformed-marker", "unknown-marker-schema", "foreign-prior-scope", "unsuspended-runner"].includes(scenario));
+    } finally {
+      state.toolAuthorityDefinitions.mockReset().mockResolvedValue([]);
+      restore.mockRestore();
+      await controller.stop();
+    }
+  });
+
   it.each([
     "quarantined",
     "large control plane",

@@ -74,6 +74,15 @@ mutations. Qualify a useful model task separately from saving the account.
 
 ### `session`
 
+For a remote OpenCode agent configured with `per_turn`, complete a task, then
+send two follow-ups without resetting its session. Verify that each continuation
+restores its external controller checkpoint, retains provider context and saved
+files, and finishes with no stranded task lock. A missing checkpoint, an active
+prior owner or a mismatched session must still stop admission. The
+[executor controls](../../server/src/services/native-runtime/native-session-executor.test.ts)
+cover checkpoint restoration and its guards; real-provider acceptance remains
+separate evidence.
+
 For a repository project that inherits storage-plugin defaults, run a task and
 send two follow-ups. Start with unset task workspace settings, then repeat with
 an explicit isolated mode or strategy. Binding must save `reuse_existing` and

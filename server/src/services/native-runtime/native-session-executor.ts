@@ -4996,6 +4996,7 @@ async function migrateRunnerdStateRootForExecution(input: {
 }): Promise<VerifiedWarmTransitionBinding | undefined> {
   const scoped = scopedRunnerdStateRoot(input.execution);
   await restoreWarmRunnerdController(input);
+  await restorePerTurnRunnerdController(input);
   // A crash can leave a source archive intent before/after its rename. Until
   // that exact maintenance is settled, absence of a canonical root is not
   // permission to bootstrap a replacement provider session.
@@ -5688,6 +5689,23 @@ function idleWarmNativeSessionOwnerRunId(input: {
   return entry.companyId === input.execution.binding.companyId && entry.environmentId === environmentId
     ? entry.runId
     : undefined;
+}
+
+async function restorePerTurnRunnerdController(input: {
+  db: Db; execution: NativeExecutionInput;
+  runnerExecutionTarget?: AdapterExecutionTarget | null;
+  restartRecovery?: NativeRestartRecoveryClaim;
+}): Promise<void> {
+  if (input.restartRecovery || input.runnerExecutionTarget?.kind !== "remote" ||
+      input.execution.session.lifecyclePolicy.mode !== "per_turn") return;
+  const root = scopedRunnerdStateRoot(input.execution);
+  if (readRunnerdDurableIdentity(root)) return;
+  const reference = readRunnerdDurableIdentity(root, true);
+  if (!durableIdentityMatchesSession(reference, input.execution)) return;
+  const restored = await restoreNativeRunnerCheckpoint(input.db,
+    { companyId: input.execution.binding.companyId, issueId: input.execution.binding.issueId, runId: reference.runId },
+    root, nativeSessionKey(input.execution));
+  if (!restored) throw new Error("native_runner_checkpoint_missing");
 }
 
 /** Materialize opaque controller state before ordinary warm admission reads it.
