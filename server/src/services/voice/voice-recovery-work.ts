@@ -12,7 +12,10 @@ export function registerVoiceRecoveryWork(
   service: ReturnType<typeof voiceSessionRecovery>,
   canRun: () => boolean,
 ) {
+  service.reset();
   const dirty = new Set<string>(["*"]);
+  const versions = new Map<string, number>();
+  const scans = new Map<string, { version: number; seen: Set<string> }>();
   const entries = new Map<string, VoiceRecoveryEntry>();
   const failures = new Map<string, { count: number; retryAt: number }>();
   const scopeFailures = new Map<string, { count: number; retryAt: number }>();
@@ -23,7 +26,8 @@ export function registerVoiceRecoveryWork(
     map.set(id, { count, retryAt: Date.now() + Math.min(300_000, 30_000 * 2 ** (count - 1)) });
   }
   function dirtyScopes() {
-    return [...dirty].map(hint => { try { return voiceRecoveryScope(hint); } catch { return undefined; } });
+    return [...dirty].filter(hint => !scans.has(hint) || scopeFailures.has(hint))
+      .map(hint => { try { return voiceRecoveryScope(hint); } catch { return undefined; } });
   }
   function next() {
     let nextAt: number | null = null;
@@ -37,29 +41,42 @@ export function registerVoiceRecoveryWork(
   const worker = coordinator.register(DELIVERY_QUEUES.voiceSessionRecovery, {
     retryMs: 30_000,
     pausePassiveMaintenance: true,
-    onSettled: hints => { for (const hint of hints ?? ["*"]) dirty.add(hint); },
+    onSettled: hints => { for (const hint of hints ?? ["*"]) {
+      dirty.add(hint); versions.set(hint, (versions.get(hint) ?? 0) + 1);
+    } },
     run: async signal => {
       if (!canRun() || Date.now() < earliest) return;
       earliest = Date.now() + 1000;
       const errors: unknown[] = [];
-      const requested = (dirty.has("*") ? ["*"] : [...dirty]).filter(hint => (scopeFailures.get(hint)?.retryAt ?? 0) <= Date.now());
-      const covered = requested.includes("*") ? [...dirty] : requested;
-      for (const hint of covered) dirty.delete(hint);
+      const ready = [...dirty].filter(hint => (scopeFailures.get(hint)?.retryAt ?? 0) <= Date.now());
+      const requested = dirty.has("*")
+        ? ready.includes("*") ? ["*", ...ready.filter(hint => hint !== "*")].slice(0, 25) : []
+        : ready.slice(0, 25);
+      for (const hint of requested) dirty.delete(hint);
       for (let index = 0; index < requested.length; index++) {
-        if (signal.aborted || !canRun()) { for (const hint of requested.includes("*") ? covered : requested.slice(index)) dirty.add(hint); return; }
+        if (signal.aborted || !canRun()) { for (const hint of requested.slice(index)) dirty.add(hint); return; }
         const hint = requested[index];
         let scope: VoiceRecoveryScope | undefined;
         let decoded = false;
         try {
           scope = voiceRecoveryScope(hint); decoded = true;
-          const rows = await service.load(scope, signal), retained = new Set(rows.map(row => row.id));
-          for (const entry of entries.values()) if (matches(entry, scope) && !retained.has(entry.id)) {
+          const scan = scans.get(hint) ?? { version: versions.get(hint) ?? 0, seen: new Set<string>() };
+          scans.set(hint, scan);
+          const result = await service.refresh(scope, signal);
+          for (const entry of result.rows ?? []) {
+            entries.set(entry.id, entry);
+            for (const [other, progress] of scans) if (matches(entry, voiceRecoveryScope(other))) progress.seen.add(entry.id);
+          }
+          if (!result.complete) { dirty.add(hint); continue; }
+          if (result.rows !== null) for (const entry of entries.values()) if (matches(entry, scope) && !scan.seen.has(entry.id)) {
             entries.delete(entry.id); failures.delete(entry.id);
           }
-          for (const entry of rows) entries.set(entry.id, entry);
+          scans.delete(hint);
+          if ((versions.get(hint) ?? 0) !== scan.version) dirty.add(hint); else versions.delete(hint);
           if (!scope) scopeFailures.clear(); else scopeFailures.delete(hint);
         } catch (error) {
           const retryHint = decoded ? hint : "*";
+          if (!decoded) { scans.delete(hint); versions.delete(hint); }
           dirty.add(retryHint); failed(scopeFailures, retryHint); errors.push(error);
         }
       }
@@ -82,6 +99,7 @@ export function registerVoiceRecoveryWork(
     // idle hold during drain. The coordinator still fences unresolved XIDs.
     hasPending: async () => canRun() && dirty.size > 0,
     nextRunAt: next,
+    nextRunAtOnError: next,
   });
   return worker;
 }

@@ -10,6 +10,10 @@ obligations; their existing maintenance remains until their own migrations land.
 
 Existing `chat_voice_sessions` rows are authoritative. Startup reconstructs live
 sessions in UUID pages of 100, joined to their same-company endpoint and connection.
+Each background refresh reads at most one inventory page. An unfinished pass has
+a one-second continuation; it does not create a permanent empty scan. Only timing
+and eligibility fields are selected for discovery. The explicit foreground
+reconciliation method keeps its complete inventory behavior.
 Terminal history does not create a live-session recovery obligation. With no live
 sessions, the worker also avoids reading experimental settings after reconstruction.
 
@@ -64,10 +68,37 @@ a bounded empty voice lookup after a chat configuration write. It does not creat
 idle polling or a recurring deadline. The shared helper contains only routing;
 voice eligibility, authority and provider policy stay with the voice owner.
 
+## Bounded configuration refreshes
+
+The voice owner remembers the endpoint/connection fields that affect its existing
+deadline policy: endpoint status, runtime generation, connection enabled state,
+connection identity, and the chat feature flag. A broad configuration hint first
+reads a bounded page of these parent records. If those facts are unchanged, the
+cached call deadlines stay in place and no call inventory is read. Metadata-only
+writes do not move business deadlines. An unknown or changed parent requires
+bounded reconstruction; a real disablement still settles every affected call.
+
+Only the voice owner interprets these facts. The generic health producer now
+sends a health-observation notification through the existing chat routing owner.
+It preserves receiver and command signals without generating a voice-configuration
+wake. An observation changes neither voice eligibility nor the saved call deadline.
+Supported session producers continue to signal their exact session ID.
+
+The worker processes at most 25 dirty scopes and 25 provider checks per pass.
+Scope pagination continues without restarting on every newer hint. Failures retain
+their backoff and block stale entries in the failed scope. Successful pages can
+make progress while the remaining inventory is discovered. The existing
+coordinator can use the actual error deadline, including an already-due healthy
+backlog, rather than postponing it to an unrelated fallback retry.
+
 ## Failure and lifecycle behavior
 
-Refreshes coalesce by scope, with a full refresh covering already pending narrower
-hints. Changes arriving during refresh remain dirty. Failed refreshes block use of
+Refreshes coalesce by scope. Paged reconstruction keeps narrower producer hints,
+including a newly committed session behind the UUID cursor. A scope generation
+retains configuration changes that arrive between pages. Seen IDs protect
+concurrent refresh results; absent cached entries are removed only when the
+scope's inventory is complete. A new worker resets partial inventory state before
+reconstructing its saved obligations. Changes arriving during refresh remain dirty. Failed refreshes block use of
 stale cached entries in that scope. Per-scope and per-call failure backoff starts
 at 30 seconds and caps at five minutes. New hints do not erase failure backoff.
 Batches rotate across companies, process at most 25 calls, and continue an already

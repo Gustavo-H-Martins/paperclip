@@ -1561,3 +1561,17 @@ proofs, 131 targeted cases pass, and both newly supported external fixtures
 self-migrate. See [the owning audit](2026-10-25-chat-receiver-discovery-sleep-audit.md#current-parent-and-review-acceptance-october-27)
 for exact evidence and the older CI runner-loss failure. Fresh CI/reviews and
 parent landing are still required. The original remaining-duty inventory is unchanged.
+
+
+## Voice inventory amplification acceptance, October 27
+
+The voice recovery slice keeps the original single-duty scope and adds the
+normalized health-observation notification contract. Five real metadata writes
+and one health check over 205 future calls previously selected 1,230 call rows;
+they now select zero and preserve the saved deadline. Startup and changed-parent
+reconstruction use bounded pages and retain concurrent wakes.
+
+The updated [voice audit](2026-10-25-voice-maintenance-sleep-audit.md#voice-session-inventory-amplification-repair-october-27)
+records all 725 distinct targeted passing cases, typecheck, build, failed attempts
+and guarded regressions. This is worker acceptance, not deployed sleep proof.
+Fresh exact-head review and CI remain required before the voice PR can merge.

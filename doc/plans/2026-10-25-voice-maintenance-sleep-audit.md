@@ -164,3 +164,59 @@ cases. Workspace typechecking passes. A fresh final voice/receiver/startup selec
 and the full local test command are running; build/publication/remote gates remain.
 No full local matrix result is claimed from targeted tests. Initial fixture errors
 and the reproduced provider-binding race remain recorded above and in test logs.
+
+## Voice session inventory amplification repair, October 27
+
+The voice branch normally integrates receiver parent #17572 at `841d451164`
+through `f8d7dd2d14`. The initial single-duty scope is 21 files, with no database
+changes. The health-observation routing repair adds one related production path,
+`tool-access/catalog/health.ts`, because an observation must not claim that voice
+configuration changed. The existing routing helper owns receiver and command
+fanout; the voice service owns eligibility and deadline comparison.
+
+A real-API regression with 205 future live calls reproduced 1,230 selected call
+rows across five metadata updates and one health observation. The row count
+measures executed database selects, rather than timer calls or helper invocations.
+After repair these operations read zero call rows, preserve the exact saved next
+deadline, and issue no voice wake for the health-only operation. A separate real
+SDK health case confirms receiver and command topics still settle after commit.
+
+The background path now uses one inventory page of at most 100 lean call headers
+per refresh. Parent state is probed separately, in bounded pages, and unchanged
+state keeps existing deadlines. Unknown or genuinely changed parent state has a
+bounded reconstruction. Foreground reconciliation keeps its complete scan API.
+The worker retains a generation and seen IDs across pages, processes at most 25
+scopes per pass, rechecks call state before provider effects, and preserves failed
+scope/call backoff. It resets partial state when the same service starts a new
+worker. No per-worker table, migration, extra scheduler, or route recovery wrapper
+is introduced.
+
+Real database regressions cover all 205 deadlines after paging and partial-scan
+restart, a new session behind the cursor, a feature change between pages, and
+connection disablement settling all 205 calls. Guarded production mutations
+reproduce the page-size violation, lost global generation (cleanup delayed past
+its prompt-recovery assertion), and health-only wake. Each original file is
+restored after the mutation. These checks supplement the existing outer-commit,
+rollback, drain, current-authority, late-provider-binding and shutdown cases.
+
+Both newly supported external fixture paths skipped migrations. Empty-database
+runs failed with missing instance_settings before the worker or provider action.
+The worker and complete voice-store fixtures now apply pending migrations before
+creating the client and use the shared PostgreSQL bootstrap budget. The initial
+amplification fixture also omitted its required Speko provider config, then used
+the wrong public health method name; those failures preceded the actual 1,230-row
+baseline. Initial quiet checks counted the observer's previous calls; measurement
+is now stopped before an independent quiet-window spy is created. The quiet
+assertion itself is unchanged. The first typecheck exposed timing-only rows being
+used for full provider operations; the timing-header type stays separate from full
+rows at that operation boundary. All failures remain recorded as such.
+
+Current targeted acceptance passes 725 distinct cases: 18 voice lifecycle, 94
+shared coordinator/batching/startup/hostname, 97 complete voice-store, 469
+tool-access, and 47 health/receiver cases. Production typecheck and server build
+pass. The 18 lifecycle cases replace the earlier 16-case result; these counts do
+not add repeated runs. Full suites ran unless a narrower selection is explicitly
+named above. No full local repository matrix, actual host suspension, Cloud wake,
+multi-writer support, or savings is inferred from this worker migration. The original remaining-duty inventory stays
+in scope. Current exact-head reviews, security, CI, and parent landing are still
+required before merging #17576.
