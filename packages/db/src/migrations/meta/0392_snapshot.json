@@ -1,6 +1,6 @@
 {
-  "id": "4c9176e8-a7dc-47c2-a3bf-5c8dbaef3710",
-  "prevId": "0488b37c-31ec-4b18-8459-0978c773324e",
+  "id": "6974dd25-b8e9-4143-b4b7-ee5a5c3ff54a",
+  "prevId": "e080fc1b-af8e-4012-8ce5-3b5065b65143",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -14160,24 +14160,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "provider_account_id": {
-          "name": "provider_account_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "cleanup_confirmed_at": {
-          "name": "cleanup_confirmed_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "cleanup_next_attempt_at": {
-          "name": "cleanup_next_attempt_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
         "expires_at": {
           "name": "expires_at",
           "type": "timestamp with time zone",
@@ -14200,22 +14182,6 @@
         }
       },
       "indexes": {
-        "chat_voice_inbound_cleanup_idx": {
-          "name": "chat_voice_inbound_cleanup_idx",
-          "columns": [
-            {
-              "expression": "id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "\"chat_voice_inbound_calls\".\"cleanup_confirmed_at\" is null",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "chat_voice_inbound_expiry_idx": {
           "name": "chat_voice_inbound_expiry_idx",
           "columns": [
@@ -22163,6 +22129,34 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "decision_archive_notification_outbox_delivery_idx": {
+          "name": "decision_archive_notification_outbox_delivery_idx",
+          "columns": [
+            {
+              "expression": "last_attempt_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "first"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"decision_archive_notification_outbox\".\"status\" = 'pending'",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -41951,28 +41945,6 @@
         }
       },
       "indexes": {
-        "join_requests_pending_retention_idx": {
-          "name": "join_requests_pending_retention_idx",
-          "columns": [
-            {
-              "expression": "updated_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "\"join_requests\".\"status\" = 'pending_approval'",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "join_requests_invite_unique_idx": {
           "name": "join_requests_invite_unique_idx",
           "columns": [
@@ -53059,6 +53031,27 @@
           "columns": [
             {
               "expression": "invocation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "tool_action_requests_company_interaction_idx": {
+          "name": "tool_action_requests_company_interaction_idx",
+          "columns": [
+            {
+              "expression": "company_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "interaction_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
