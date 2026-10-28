@@ -126,3 +126,24 @@ The latter race failed before the write-time guard and passes afterward.
 
 The dated audit records exact commands, results, initial fixture failures and
 remaining acceptance work: [voice migration audit](plans/2026-10-25-voice-maintenance-sleep-audit.md).
+
+
+## Landed-foundation acceptance, October 27
+
+The voice repair now integrates receiver parent `6e88ca0201`, including Discord
+`547fdf2139` and master `f8563d2507`. Exact-patch comparison preserves the repaired
+22-file scope and master's shared task-drain and native-checkpoint queue names.
+No database file is part of this slice.
+
+All 725 distinct targeted cases pass again: 112 complete voice/shared/startup
+cases, 97 complete voice-store cases, 469 complete tool-access cases, and 47
+complete health/receiver cases. Server production typecheck and build pass.
+Voice worker/store and health/receiver fixtures use separate initially empty
+self-migrating databases. Tool access uses a separate migrated clone. One initial
+tool-access invocation supplied the generic fixture variable instead of the
+suite-specific variable: 23 cases passed and 446 skipped. It was not a complete
+suite result or an assertion failure. The corrected invocation executes and
+passes all 469. Tests are not counted twice. Expected controlled failures and
+listener warnings remain in logs. Only documentation changes follow these checks.
+Fresh current-head reviews, CI and parent landing remain required. No full local
+matrix, provider acceptance, external wake or deployed sleep result is claimed.

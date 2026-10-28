@@ -1575,3 +1575,27 @@ The updated [voice audit](2026-10-25-voice-maintenance-sleep-audit.md#voice-sess
 records all 725 distinct targeted passing cases, typecheck, build, failed attempts
 and guarded regressions. This is worker acceptance, not deployed sleep proof.
 Fresh exact-head review and CI remain required before the voice PR can merge.
+
+## Discord registration landing compatibility, October 27
+
+Company deletion has landed. The Discord command slice retains only its original
+26-file delta against the landed parent and current master at `f8563d2507`. All
+141 targeted cases, server typecheck and build pass. The [owning audit](2026-10-25-discord-command-registration-sleep-audit.md#acceptance-after-the-company-deletion-parent-landed-october-27)
+records exact scope, fixture setup and remaining remote gates.
+
+
+## Receiver integration with landed foundations, October 27
+
+Receiver discovery keeps its 27-file scope on Discord parent `547fdf2139` and
+preserves current master queue declarations. All 131 targeted cases, server
+typecheck and build pass. See the [receiver audit](2026-10-25-chat-receiver-discovery-sleep-audit.md#landed-foundation-integration-acceptance-october-27).
+Fresh exact-head review, CI and parent landing remain required.
+
+
+## Voice integration with landed foundations, October 27
+
+The bounded voice repair now includes receiver `6e88ca0201` and retains its
+22-file scope. All 725 targeted cases, production typecheck and server build pass
+again. The [voice audit](2026-10-25-voice-maintenance-sleep-audit.md#landed-foundation-acceptance-october-27)
+records exact scope, database setup, the initial partial tool-access run and
+remaining remote gates.
