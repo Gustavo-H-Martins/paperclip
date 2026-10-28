@@ -245,3 +245,48 @@ Workspace `pnpm -r typecheck` and `pnpm build` pass after the review repairs.
 The 191 selected tests above are overlapping consumer verification, not an
 additional 191 unique cases on top of the earlier 786. Remote acceptance remains
 required on the published follow-up head.
+
+
+## Current-parent paging contract acceptance, October 27
+
+This slice normally integrates bounded voice recovery #17576 at `712f3862b5`,
+including receiver `6e88ca0201` and the landed foundations. The original 30-file
+reply scope adds one shared contract path, `scoped-deadline-work.ts`. No database
+file changes. The existing helper could represent only a complete inventory;
+using that contract for the repaired parent would erase its bounded-pass guarantee.
+
+The real 205-call parent regression fails before the integration repair: startup
+executes three inventory queries (100, 100, 5 rows) instead of one 100-row query.
+The shared helper now accepts either its existing complete array or a normalized
+page result. It retains page generations and seen identities, keeps existing
+entries until reconstruction completes, limits dirty scopes per pass, and replays
+writes received during reconstruction. It owns no SQL or voice/provider policy.
+Recovery delegates to its owner refresh and resets partial owner state on worker
+registration. Existing complete-array consumers keep their public calls.
+Connection observations retain the parent's separate receiver/command notification
+path; actual configuration wakes both voice owners.
+
+All 445 distinct targeted cases pass: 18 complete parent recovery lifecycle
+cases, 108 complete voice-store/reply integrations, 224 complete tool-gateway and
+secret-proposal cases, and 95 shared dispatcher/coordinator/batching/startup/
+hostname cases. The helper's single existing test also ran in the initial
+19-case green group; it is counted only in the 95-case group. The 224 cases
+exercise the four other production consumers of the shared helper, including
+complete-array empty/expiry/recovery/projection, transaction and drain behavior.
+Server production typecheck and server build pass. The voice fixtures self-migrate
+separate initially empty databases. The two other database suites use separate
+migrated clones. Expected injected provider/wakeup failures and listener warnings
+remain in logs. Only documentation edits follow these passing production checks.
+
+This acceptance preserves the parent's startup paging, restart, behind-cursor
+insert, concurrent feature change, health-only quiet, true disablement, current
+authority, failure, drain and shutdown contracts. Existing real publication,
+operator resolution, uncertain send, multipart/question ordering, authority
+restoration and 105-abandoned-dispatch tests remain in the 108-case suite.
+Fresh exact-head reviews and all CI remain required. No full local matrix,
+live provider acceptance, Cloud wake, deployed suspension or savings is claimed.
+
+The whole-merge whitespace check flagged literal context whitespace inside an
+inherited `tests/runner-e2e/report-lock.patch` fixture. That fixture matches the
+parent and is outside this PR delta. The 31-file delta against the pinned parent
+passes the whitespace check; the inherited fixture is not edited to hide it.
