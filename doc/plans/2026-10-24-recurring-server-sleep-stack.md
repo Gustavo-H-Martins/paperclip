@@ -1497,3 +1497,11 @@ baselines, real concurrency proof, and fresh-database verification. Older stack
 status and test counts above are historical. The original remaining inventory
 is still in scope beyond the 65 published numbered slices; native backups and
 the remaining aggregate duties have not been migrated by this follow-up.
+
+
+## Discord registration landing compatibility, October 27
+
+Company deletion has landed. The Discord command slice retains only its original
+26-file delta against the landed parent and current master at `f8563d2507`. All
+141 targeted cases, server typecheck and build pass. The [owning audit](2026-10-25-discord-command-registration-sleep-audit.md#acceptance-after-the-company-deletion-parent-landed-october-27)
+records exact scope, fixture setup and remaining remote gates.
