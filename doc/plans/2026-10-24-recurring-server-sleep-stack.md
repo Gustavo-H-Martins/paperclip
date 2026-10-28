@@ -1599,3 +1599,12 @@ The bounded voice repair now includes receiver `6e88ca0201` and retains its
 again. The [voice audit](2026-10-25-voice-maintenance-sleep-audit.md#landed-foundation-acceptance-october-27)
 records exact scope, database setup, the initial partial tool-access run and
 remaining remote gates.
+
+
+## Voice trusted-policy checkout repair, October 27
+
+Receiver `ab39569250` supplies the landed policy checker now required by trusted
+CI. Voice server/package code and tests remain identical to the 725-case tested
+head. The policy checker and its Node tests pass. The [voice audit](2026-10-25-voice-maintenance-sleep-audit.md#trusted-policy-checkout-compatibility-october-27)
+keeps the four old failed gates, including the independent runner shutdown,
+separate from current local evidence. Fresh review and CI remain required.
