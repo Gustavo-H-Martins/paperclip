@@ -26,13 +26,14 @@ export function registerVoiceRecoveryWork(
     map.set(id, { count, retryAt: Date.now() + Math.min(300_000, 30_000 * 2 ** (count - 1)) });
   }
   function dirtyScopes() {
-    return [...dirty].filter(hint => !scans.has(hint) || scopeFailures.has(hint))
+    return [...dirty].filter(hint => hint !== "*" || !scopeFailures.has(hint))
+      .filter(hint => !scans.has(hint) || scopeFailures.has(hint))
       .map(hint => { try { return voiceRecoveryScope(hint); } catch { return undefined; } });
   }
   function next() {
     let nextAt: number | null = null;
     const take = (at: number) => { nextAt = nextAt === null ? at : Math.min(nextAt, at); };
-    for (const hint of dirty.has("*") ? ["*"] : dirty) take(Math.max(earliest, scopeFailures.get(hint)?.retryAt ?? 0));
+    for (const hint of dirty) take(Math.max(earliest, scopeFailures.get(hint)?.retryAt ?? 0));
     const unavailable = dirtyScopes();
     for (const entry of entries.values()) if (!unavailable.some(scope => matches(entry, scope)))
       take(Math.max(earliest, entry.dueAt, failures.get(entry.id)?.retryAt ?? 0));
@@ -49,8 +50,8 @@ export function registerVoiceRecoveryWork(
       earliest = Date.now() + 1000;
       const errors: unknown[] = [];
       const ready = [...dirty].filter(hint => (scopeFailures.get(hint)?.retryAt ?? 0) <= Date.now());
-      const requested = dirty.has("*")
-        ? ready.includes("*") ? ["*", ...ready.filter(hint => hint !== "*")].slice(0, 25) : []
+      const requested = ready.includes("*")
+        ? ["*", ...ready.filter(hint => hint !== "*")].slice(0, 25)
         : ready.slice(0, 25);
       for (const hint of requested) dirty.delete(hint);
       for (let index = 0; index < requested.length; index++) {

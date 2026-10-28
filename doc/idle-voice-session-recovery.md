@@ -147,3 +147,38 @@ passes all 469. Tests are not counted twice. Expected controlled failures and
 listener warnings remain in logs. Only documentation changes follow these checks.
 Fresh current-head reviews, CI and parent landing remain required. No full local
 matrix, provider acceptance, external wake or deployed sleep result is claimed.
+
+
+## Wildcard failure and deterministic generation acceptance, October 28
+
+Current-head CI `40633667141` fails server shard 1 at the feature-change test's
+34,050 ms result against its 25,000 ms bound; verification fails as an aggregate.
+This is an actual required assertion failure, distinct from the older interrupted
+build and missing policy script. The old test mixed automatically advancing fake
+time with real database latency. It now disables automatic clock advancement,
+drives 20 explicit scheduler turns, waits for each pass without advancing the
+clock, and requires every invalidated call to close before the unrelated periodic
+authority deadline. Removing generation replay still fails with missing closures.
+The test no longer benchmarks host/database speed or raises its business bound.
+
+A real committed-session regression also reproduces wildcard starvation: while
+one broad reconstruction backs off, a newly ending exact call is not closed.
+The worker now retains the broad retry but considers ready exact hints and cached
+due calls independently. Each due call still reloads state and authorization in
+its owning check before effects. Failed exact scopes retain their own fence;
+the existing stale-cache failure regression still passes. Removing wildcard
+isolation fails the new exact-call assertion. Broad reconstruction becomes quiet
+after its successful retry, with no continuing SQL afterward.
+
+The full-row execution lookup and lean inventory lookup now share the live-state,
+scope and cursor predicate. Their projections remain intentionally different.
+An initial edit script rejected the header cursor name before applying the timing
+and predicate changes; the intermediate 19-case result covers only the earlier
+worker repair. It is not the final repair evidence. The corrected source passes
+all 19 lifecycle cases and 191 complete voice-store/shared/startup cases: 210
+distinct targeted cases. Production server typecheck and build pass. Both guarded
+regressions fail at their intended effect assertion and restore source afterward.
+The fresh voice-store database self-migrates. Existing controlled failure logs
+and signal-listener warnings remain recorded. The older 725-case acceptance
+belongs to its stated revision and is not added to this count. Fresh current-head
+reviews and all CI remain required before merging after receiver discovery.

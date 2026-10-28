@@ -1608,3 +1608,13 @@ CI. Voice server/package code and tests remain identical to the 725-case tested
 head. The policy checker and its Node tests pass. The [voice audit](2026-10-25-voice-maintenance-sleep-audit.md#trusted-policy-checkout-compatibility-october-27)
 keeps the four old failed gates, including the independent runner shutdown,
 separate from current local evidence. Fresh review and CI remain required.
+
+
+## Voice review follow-up, October 28
+
+Voice recovery isolates a failed broad inventory retry from ready exact hints
+and cached due calls, while retaining on-use authority checks and exact-scope
+fences. The generation test uses controlled scheduler turns instead of elapsed
+SQL time. All 210 current targeted cases, production typecheck and server build
+pass; guarded mutations catch both regressions. The [voice audit](2026-10-25-voice-maintenance-sleep-audit.md#wildcard-failure-and-deterministic-generation-acceptance-october-28)
+keeps the actual CI assertion failure and earlier failed attempts separate.
