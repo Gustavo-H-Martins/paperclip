@@ -1798,3 +1798,14 @@ retains the five newest snapshots. The [report acceptance ledger](2026-10-25-voi
 records 302 passing cases, types/build, migration/plan checks, guarded restart and
 fairness probes, failures and limits. Current-head review, all CI and parent
 landing still gate this slice. The full remaining stack stays in scope.
+
+
+## Report notification review follow-up, October 28
+
+Report reconstruction also received configuration hints that could not alter
+its eligibility or saved retry. Five real connection saves over 205 saved
+reports selected 1,025 session rows. The report owner now accepts exact session
+notifications and startup; those saves select zero rows and preserve the deadline.
+The [report notification ledger](2026-10-25-voice-call-report-sleep-audit.md#configuration-scope-review-repair-october-28)
+records 303 passing cases, types/build, the narrower contract and limits. Fresh
+exact-head review and CI are required after the repair.

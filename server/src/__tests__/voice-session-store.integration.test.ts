@@ -82,6 +82,55 @@ const support = external ? { supported: true } : await getEmbeddedPostgresTestSu
     return { companyId, endpointId, agentId, connectionId, issueId, conversationId, callerId, sessionId, store, request, reserved, accept, toolInput, publication };
   }
 
+  it("keeps saved report deadlines quiet across repeated voice connection saves", async () => {
+    const f = await nativeServiceFixture();
+    const [seed] = await db.select().from(chatVoiceSessions).where(eq(chatVoiceSessions.id, f.sessionId));
+    const endedAt = new Date(), deadline = Date.now() + 600_000;
+    await db.update(chatVoiceSessions).set({ state: "ended", endedAt }).where(eq(chatVoiceSessions.id, seed.id));
+    const ids = [seed.id, ...Array.from({ length: 204 }, () => randomUUID())];
+    await db.insert(chatVoiceSessions).values(ids.slice(1).map(id => ({
+      ...seed, id, callerId: randomUUID(), idempotencyKey: id, providerSessionId: randomUUID(),
+      state: "ended" as const, endedAt,
+    })));
+    await db.insert(chatVoiceReports).values(ids.map(sessionId => ({ companyId: f.companyId, sessionId, nextCheckAt: new Date(deadline) })));
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"], shouldAdvanceTime: true });
+    const onError = vi.fn(), coordinator = createDeliveryWorkCoordinator({ owner: db, canRun: () => true, onError });
+    const settle = () => vi.waitFor(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(idleWorkSnapshot().active).toBe(0);
+      expect(coordinator.nextWakeAt()).toBe(deadline);
+    }, { timeout: 5000 });
+    let selected = 0; const select = db.select.bind(db);
+    try {
+      await f.service.registerReportWork(coordinator, () => true).ready; await settle();
+      const reads = vi.spyOn(db, "select").mockImplementation((...args) => {
+        const selection = select(...args), from = selection.from.bind(selection);
+        vi.spyOn(selection, "from").mockImplementation(table => {
+          const query = from(table);
+          if (table === chatVoiceSessions) {
+            const execute = query.execute.bind(query);
+            vi.spyOn(query, "execute").mockImplementation(async () => {
+              const rows = await execute(); selected += rows.length; return rows;
+            });
+          }
+          return query;
+        });
+        return selection;
+      });
+      try {
+        for (let index = 0; index < 5; index++) {
+          await toolAccessService(db).updateConnection(f.connectionId, { name: `Saved report ${index}` });
+          await settle();
+        }
+        expect(selected).toBe(0); expect(f.transport.callReport).not.toHaveBeenCalled();
+        expect(onError).not.toHaveBeenCalled();
+      } finally { reads.mockRestore(); }
+    } finally {
+      await coordinator.stop(); vi.useRealTimers(); vi.restoreAllMocks();
+      await db.update(chatVoiceSessions).set({ endedAt: new Date(Date.now() - 2 * 86_400_000) }).where(eq(chatVoiceSessions.companyId, f.companyId));
+    }
+  });
+
   it.each(["hangup", "signed callback", "reply ended"])("wakes report refresh from real %s and advances it on a later callback", async trigger => {
     const f = await inboundFixture();
     await db.update(chatVoiceSessions).set({ endedAt: new Date(Date.now() - 2 * 86_400_000) }).where(eq(chatVoiceSessions.id, f.sessionId));

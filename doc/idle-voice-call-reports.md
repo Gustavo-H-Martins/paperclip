@@ -26,8 +26,9 @@ yielding after at most 100 rows per scope refresh. Re-registering the same owner
 resets partial scan cursors. The explicit one-shot inventory still loads every
 page when requested.
 A partial index selects terminal sessions with provider IDs. The query uses
-its ended-at range to restrict reads to the current 24-hour window. The cursor retains PostgreSQL timestamp precision. Committed hints reload their
-session, endpoint, connection, or company scope. Each cached entry carries the
+its ended-at range to restrict reads to the current 24-hour window. The cursor retains PostgreSQL timestamp precision. Committed report hints reload the exact changed session. Configuration,
+authority and connection metadata changes do not alter report eligibility or
+saved retries, so they do not wake report reconstruction. Each cached entry carries the
 saved report deadline or the first millisecond after the refresh window ends,
 whichever comes first. Submillisecond PostgreSQL timestamps round in the safe
 direction. Expiring the window removes the cached obligation without a provider
@@ -90,3 +91,9 @@ records 302 distinct passing cases, the bounded startup and same-owner restart
 regressions, deterministic company fairness, generated migration 0396 and the
 preserved failures. The report owner keeps its finite provider refresh obligation;
 this is not an unconditional idle scan or proof of deployed suspension.
+
+
+The subsequent [configuration-scope repair](plans/2026-10-25-voice-call-report-sleep-audit.md#configuration-scope-review-repair-october-28)
+records the current 303-case acceptance. Five real connection saves over 205 saved
+reports select zero session rows, after reproducing 1,025 selected rows before
+the repair. The notification helper accepts only an exact session scope.

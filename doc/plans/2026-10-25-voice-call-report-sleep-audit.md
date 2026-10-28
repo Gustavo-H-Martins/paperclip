@@ -304,3 +304,47 @@ parent `b8b12199b9` completed green CI after its single recorded E2E retry, but
 lacks current Ponytail acceptance. Retention's earlier 4/5 review was repaired
 in `68b62b6d13`; that new parent still requires its own fresh reviews and CI.
 Neither parent state is a waiver for reports or for remaining stack duties.
+
+
+## Configuration scope review repair, October 28
+
+The earlier security thread correctly identified another source of repeated
+report inventory. A voice connection save reached `notifyVoiceChange`, which
+notified reports for connection, endpoint, company or global scopes. Bounded
+paging controlled each burst but still reloaded the whole eligible set after
+separate saves. A real producer regression seeds 205 terminal sessions with saved
+future report deadlines, then performs five separate connection saves. It selects
+1,025 session rows before repair and zero afterward. The original next deadline
+is unchanged, and no provider GET occurs during the saves.
+
+The composed notification now signals reports only for actual session changes.
+The report-specific helper accepts only an exact session scope, preventing a
+future configuration caller from reintroducing broad hints through that boundary.
+Startup still uses the shared worker's initial paged reconstruction. Report claims,
+receipts and signed callbacks keep exact session notifications. Existing terminal
+hangup and reply-ended paths remain covered through their real producer APIs.
+Live recovery, replies and inbound cleanup retain their own broader authority
+and configuration signals; their eligibility can depend on those changes.
+
+The report predicate depends on session terminal state, provider identity and
+endedAt, plus saved report state. A configuration save changes none of them.
+Previously such a save only reloaded nextCheckAt and did not advance a future
+provider attempt; the repair retains that same saved retry. There is no new
+credential policy, refresh cadence, schema or scheduler contract. Manual inventory
+APIs remain complete. Unsupported external SQL still needs its own wake contract.
+
+303 distinct cases pass after the repair: 132 complete voice integration cases,
+170 complete lifecycle/shared/startup cases, and the unchanged schema/snapshot
+case. The voice suite uses a fresh separate DB; the lifecycle suites use their
+existing dedicated isolated DBs. Server typecheck/build and module boundaries
+pass. The earlier 302 count applies to `80207ba6bb` and is not added to this count.
+The current Ponytail 5/5 on that earlier head cannot be reused after this edit;
+fresh exact-head review and all CI remain required.
+
+Logs: `/tmp/sleep25-config-amplification-red.log`,
+`/tmp/sleep25-scope-final-voice-consumers.log`,
+`/tmp/sleep25-scope-final-lifecycle-consumers.log`,
+`/tmp/sleep25-scope-final-types.log`, `/tmp/sleep25-scope-final-build.log`, and
+`/tmp/sleep25-scope-final-module-boundaries.log`. No full local repository suite,
+live provider, Cloud wake or physical suspension claim is added. The original
+20-path report scope and the existing finite 24-hour obligation remain intact.
