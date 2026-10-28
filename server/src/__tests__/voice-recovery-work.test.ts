@@ -151,20 +151,25 @@ const support = external ? { supported: true } : await getEmbeddedPostgresTestSu
     await quiet(5000);
   });
   it("reapplies a feature change that arrives between inventory pages", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"], shouldAdvanceTime: false });
     await futureInventory(205);
     const settings = instanceSettingsService(db), service = voiceSessionRecovery(db, { authorize, inspect, close });
-    const refresh = service.refresh; let changedAt: number | undefined;
+    const refresh = service.refresh; let changed = false;
     service.refresh = async (...args) => {
       const result = await refresh(...args);
-      if (!args[0] && !result.complete && changedAt === undefined) {
-        changedAt = Date.now(); await settings.updateExperimental({ enableChatConnectors: false });
+      if (!args[0] && !result.complete && !changed) {
+        changed = true; await settings.updateExperimental({ enableChatConnectors: false });
       }
       return result;
     };
     try {
-      await start(service); await settled();
+      await start(service);
+      for (let pass = 0; pass < 20; pass++) {
+        await vi.advanceTimersByTimeAsync(1000);
+        await vi.waitFor(() => expect(coordinator!.nextWakeAt() !== null || idleWorkSnapshot().active === 0).toBe(true), { interval: 0 });
+      }
       expect(new Set(close.mock.calls.map(([row]) => row.id)).size).toBe(205);
-      expect(Date.now() - changedAt!).toBeLessThan(25_000);
+      await settled();
       await quiet();
     } finally {
       await coordinator?.stop(); coordinator = undefined;
@@ -288,6 +293,28 @@ const support = external ? { supported: true } : await getEmbeddedPostgresTestSu
     await start();
     expect(inspect.mock.calls.slice(0, 25).some(([candidate]) => candidate.id === row.id)).toBe(true);
     await settled(); expect(inspect).toHaveBeenCalledTimes(31); await quiet();
+  });
+  it("keeps exact hints and cached due calls moving while wildcard reconstruction backs off", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"], shouldAdvanceTime: false });
+    const cached = await session({ updatedAt: new Date(Date.now() - 20_000) });
+    const dueAt = cached.updatedAt.getTime() + 30_000;
+    const service = await start(), refresh = service.refresh;
+    service.refresh = async (scope, signal) => {
+      if (!scope) throw new Error("wildcard unavailable");
+      return refresh(scope, signal);
+    };
+    await db.transaction(tx => notifyVoiceRecovery(tx));
+    await vi.advanceTimersByTimeAsync(1000);
+    await vi.waitFor(() => expect(errors).toHaveLength(1), { interval: 0 });
+    const exact = await session({ state: "ending" });
+    await vi.advanceTimersByTimeAsync(1000);
+    await vi.waitFor(() => expect(close).toHaveBeenCalledWith(expect.objectContaining({ id: exact.id })), { interval: 0 });
+    await vi.advanceTimersByTimeAsync(Math.max(0, dueAt - Date.now()));
+    await vi.waitFor(() => expect(inspect).toHaveBeenCalledWith(expect.objectContaining({ id: cached.id })), { interval: 0 });
+    expect(errors).toHaveLength(1);
+    service.refresh = refresh; errors.length = 0;
+    await vi.advanceTimersByTimeAsync(Math.max(0, coordinator!.nextWakeAt()! - Date.now()));
+    await settled(); await quiet();
   });
   it("does not inspect stale cached work until a failed scope refresh succeeds", async () => {
     const row = await session({ updatedAt: new Date(Date.now() - 20_000) });
