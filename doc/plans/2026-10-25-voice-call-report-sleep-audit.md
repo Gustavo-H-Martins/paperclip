@@ -1,7 +1,8 @@
 # Voice call-report scheduling sleep audit
 
-Baseline: voice history retention PR #17583 at
+Original baseline: voice history retention PR #17583 at
 9c38ddfe5349ef1872306a91c7e4c5c1bc083259.
+Current integrated parent: 68b62b6d13f28ac5f17f35b98adf5488752f9b97.
 Branch: codex/sleep-25-voice-call-reports.
 Status: implementation and local acceptance complete; publication and remote gates pending.
 
@@ -192,3 +193,114 @@ pass all 138 cases after the index repair. Logs:
 /tmp/sleep25-report-review-{types,build,acceptance}.log.
 Publish and propagate through Teams #17590/#17592 after acceptance. Fresh remote
 review/checks and all prior full-stack requirements remain open.
+
+
+## Current-parent reconstruction and migration acceptance, October 28
+
+The report branch normally integrates retention `68b62b6d13` and its cleanup,
+recovery and reply foundations. The retention repair prevents configuration saves
+from rescanning history. Its real 205-admission, five-save regression is retained
+and passes in the complete voice suite here. Both report and retention tests were
+preserved when their additions conflicted at the same point in that suite.
+The original 20 owned paths remain the complete report slice. Shared scheduler,
+workflow and lockfile changes are inherited context, not additions by reports.
+
+### Bounded discovery, restart and fair dispatch
+
+The old report `load` executed every page before yielding. A new 105-session
+fixture with saved future report deadlines selected 105 rows in its first pass,
+failing the 100-row startup budget. The registered worker now returns one page
+per scope refresh through the existing shared `{ rows, complete }` contract.
+The domain owner retains full explicit `load` and one-shot reconciliation APIs.
+The keyset cursor still stores PostgreSQL timestamp text, not a truncated Date.
+Only successful, non-aborted reads advance a cursor, and registration resets it.
+
+The real same-owner restart case stops after 100 of 105 saved deadlines,
+re-registers the service, reconstructs the original deadline, and refreshes each
+of the 105 reports once at that time. It observes no SQL/provider activity before
+the deadline or between saved retries afterward. Removing the cursor reset fails
+at five rows instead of 100 on restart. This measures selected rows, not physical
+tuple visits or instance cost.
+
+Fairness applies to discovered work. The prior test demanded that a company
+beyond the first page run in the initial batch; that assumes an eager inventory.
+The revised test puts that company deterministically on page two and requires
+it in the next 25-work batch as soon as it is discovered. It also verifies all
+105 calls run and the failing provider retains one saved attempt without
+starving the backlog. Bypassing company rotation makes the next-batch assertion
+fail. Both guarded mutations restore the exact original source afterward.
+
+Preserved test failures distinguish this contract change from production defects.
+The first bounded full run failed the old first-batch assertion. The first
+controlled-clock revision allowed random UUID order to put the other company
+on page one; a fixed final key now makes page placement deterministic. An
+intermediate revision expected zero active intent holds before all dirty scopes
+settled. The test now uses 20 controlled one-second scheduler turns, retaining
+those holds until reconciliation completes, and finishes before the provider's
+60-second retry. It still checks fair dispatch, all 105 calls, one failed attempt,
+and quiet after settlement. It does not advance time in every assertion retry.
+
+The external fixture first failed on missing tables. It now applies the actual
+application migrations with the standard setup timeout before creating data.
+The failed setup and 105-versus-100 budget remain recorded. No test is skipped
+and no eligibility or provider assertion was removed to repair setup.
+
+### Generated migration lineage
+
+The old unmerged report migration 0393 conflicts with the landed checkpoint and
+cleanup lineage. The complete retention parent migration tree and client were
+restored, then the unchanged report-index schema edit was regenerated with
+`pnpm db:generate`. The result is `0396_careful_blindfold.sql`. It creates the
+existing proposed partial `(ended_at, id)` index concurrently and replayably,
+through the application's top-level migration runner. No table or field is added.
+
+All 394 parent SQL files and the journal prefix are preserved byte-for-byte.
+Snapshots 0392 through 0396 are the five retained snapshots. The generator's
+required deletion of 0391 is included; no retained snapshot or ID was hand-edited.
+Generation used parent `ffe9d47b`; retention review head `68b62b6d13` has the exact
+same database tree. The snapshot/schema drift regression passes. The report
+fixture boots through the application migrator, and two later complete migration
+invocations succeed with the report index valid. The existing query-plan case
+still tests 20,001 old sessions, 205 eligible sessions and all three precision-safe
+pages; each query removes fewer than 1,000 rows by filtering.
+
+### Final local evidence
+
+302 distinct cases pass on this combined source:
+
+- 131 complete voice integration cases, including real hangup, callback and reply
+  terminal producers, transcript projection after a document lock, and the parent
+  retention amplification regression. This suite uses an initially empty DB.
+- 170 cases across 11 complete report, retention, cleanup, recovery, company
+  removal, shared deadline/coordinator/batching, startup and hostname suites.
+  This includes 15 report, 13 retention and 14 cleanup lifecycle cases. Recovery,
+  company removal, retention and cleanup use separate initially empty DBs and
+  migrate themselves. Reports use their dedicated DB after the setup repair.
+- One complete snapshot/schema drift case. The schema and migration tree are
+  identical to the checked generation after the final retention merge.
+
+Database and server typechecks/builds, migration numbering/safety and the module
+boundary check pass. Earlier 174/138-case and workspace-wide claims apply only to
+their stated heads. No new full local repository suite, live provider, Cloud wake,
+physical suspension or savings claim is made. The 24-hour mutable-report window,
+retry, confirmation, callback ownership and quarantined transcript policy remain.
+
+Evidence logs are `/tmp/sleep25-final-voice-consumers.log`,
+`/tmp/sleep25-final-lifecycle-consumers.log`,
+`/tmp/sleep25-final-snapshot-drift.log`,
+`/tmp/sleep25-final-integrated-{types,build}.log`,
+`/tmp/sleep25-current-migration-{check,replay}.log`, and
+`/tmp/sleep25-current-migration-lineage-proof.json`. Failed setup, eager paging,
+and the three fairness-clock attempts are in `/tmp/sleep25-empty-fixture-red.log`,
+`/tmp/sleep25-page-budget-red.log`, `/tmp/sleep25-bounded-report-first-full.log`,
+`/tmp/sleep25-bounded-report-green.log` and
+`/tmp/sleep25-bounded-report-fairness-green.log`. The passing initial full report
+run is `/tmp/sleep25-bounded-report-final-green.log`; its 15 cases are included
+in the final 170 and not counted twice. Negative probes are
+`/tmp/sleep25-{cursor-reset,company-fairness}-mutant-red.log`.
+
+Fresh exact-head review, CI and earlier stack landing remain required. Cleanup
+parent `b8b12199b9` completed green CI after its single recorded E2E retry, but
+lacks current Ponytail acceptance. Retention's earlier 4/5 review was repaired
+in `68b62b6d13`; that new parent still requires its own fresh reviews and CI.
+Neither parent state is a waiver for reports or for remaining stack duties.

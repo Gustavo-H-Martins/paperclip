@@ -237,3 +237,49 @@ and operation cancellation before the suite completed. This is incomplete
 acceptance, not a passing run or an established product flake. The trusted runner
 selection also had a cancelled check. The source failure log is preserved at
 `/tmp/sleep24-daca-server4-failed.log`. New-head CI must complete independently.
+
+
+## Configuration rescan review repair, October 28
+
+Ponytail's current-head 4/5 review of `ffe9d47b7f` identified that completed
+connection/company/endpoint scans restarted after every configuration save.
+Paging bounded each burst but did not remove total repeated work. A real
+producer regression seeds 205 future confirmed admissions and performs five
+separate `toolAccessService.updateConnection` saves, allowing each scan to settle.
+It selected 1,025 admission rows before the repair and selects zero afterward.
+All original retention deadlines remain armed and unchanged.
+
+`notifyVoiceInbound` still notifies cleanup for every supported scope. Retention
+now receives only admission-scoped writes. Startup retains its complete paged
+reconstruction. Configuration, authority and voice-session changes do not modify
+admission eligibility or its timestamps. Admission creation, confirmation,
+expiry, approval/binding and signed lifecycle writes retain their exact hints.
+The schema uses restrictive session/task foreign keys, not implicit SET NULL
+transitions that could create eligible history behind this boundary. Cascading
+endpoint/company removal creates no retained work. A previously cached deadline
+may expire once after a row has been removed; it cannot recreate history or start
+recurring reconciliation. Arbitrary SQL and other processes still require their
+own explicit wake contract.
+
+Successful deletion now uses its returned row identity to settle the cached
+entry directly. A changed, bound or not-yet-due row still reloads current state
+so its deadline is preserved. The new real-delete case observes no post-delete
+SELECT. Guardedly removing that fast path reproduces the extra SELECT; the
+original source was restored. There is no new helper, queue, schema or scheduler
+contract.
+
+All 282 distinct cases pass after this repair: 127 complete voice integration
+cases and 155 cases in ten full retention/cleanup/recovery/company-removal/shared/
+startup suites. These include 13 retention cases. The complete voice suite uses
+a fresh dedicated database; the lifecycle suites use their existing separate
+isolated databases. Server typecheck and build pass. The earlier 280 count belongs
+to `ffe9d47b7f`; these cases include that coverage and are not added to it.
+
+Logs: `/tmp/sleep24-config-amplification-red.log` (1,025 rows),
+`/tmp/sleep24-review-final-voice-consumers.log` (127 pass and zero-row budget),
+`/tmp/sleep24-review-final-lifecycle-consumers.log` (155 pass),
+`/tmp/sleep24-review-final-types.log`, `/tmp/sleep24-review-final-build.log`, and
+`/tmp/sleep24-deleted-reload-mutant-red.log`. Fresh exact-head reviews and CI remain
+required after publication; the prior green CI and 4/5 review are not reused for
+the new commit. No complete local repository suite, live provider, Cloud wake or
+physical suspension claim is added.

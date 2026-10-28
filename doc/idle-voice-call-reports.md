@@ -21,9 +21,12 @@ result does the same. Healthy active-session observations do not activate report
 work. Nested transactions wait for the outer commit; rollback does not publish
 new work. The existing work-signals protocol owns uncertain outcomes.
 
-Startup reconstructs eligible sessions in pages ordered by `(ended_at, id)`.
-A partial index restricts the search to terminal sessions with provider IDs and
-the current 24-hour window. The cursor retains PostgreSQL timestamp precision. Committed hints reload their
+Startup reconstructs eligible sessions in pages ordered by `(ended_at, id)`,
+yielding after at most 100 rows per scope refresh. Re-registering the same owner
+resets partial scan cursors. The explicit one-shot inventory still loads every
+page when requested.
+A partial index selects terminal sessions with provider IDs. The query uses
+its ended-at range to restrict reads to the current 24-hour window. The cursor retains PostgreSQL timestamp precision. Committed hints reload their
 session, endpoint, connection, or company scope. Each cached entry carries the
 saved report deadline or the first millisecond after the refresh window ends,
 whichever comes first. Submillisecond PostgreSQL timestamps round in the safe
@@ -80,3 +83,10 @@ The app wiring suite protects removal of the voice maintenance lane.
 
 The audit and evidence ledger is
 [voice call-report scheduling](plans/2026-10-25-voice-call-report-sleep-audit.md).
+
+
+The [current-parent acceptance](plans/2026-10-25-voice-call-report-sleep-audit.md#current-parent-reconstruction-and-migration-acceptance-october-28)
+records 302 distinct passing cases, the bounded startup and same-owner restart
+regressions, deterministic company fairness, generated migration 0396 and the
+preserved failures. The report owner keeps its finite provider refresh obligation;
+this is not an unconditional idle scan or proof of deployed suspension.
