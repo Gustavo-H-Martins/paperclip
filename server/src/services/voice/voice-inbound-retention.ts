@@ -52,15 +52,17 @@ export function voiceInboundRetention(db: Db) {
   }
   async function check(id: string, signal?: AbortSignal): Promise<RetentionEntry | null> {
     signal?.throwIfAborted();
-    await db.transaction(async tx => {
+    const deleted = await db.transaction(async tx => {
       // Eligibility and both age conditions are current-state predicates under
       // the admission lock. Cached discovery cannot delete a changed binding.
       const [row] = await tx.select({ id: chatVoiceInboundCalls.id }).from(chatVoiceInboundCalls)
         .where(and(eq(chatVoiceInboundCalls.id, id), due(Date.now()))).for("update");
-      if (!row) return;
+      if (!row) return false;
       signal?.throwIfAborted();
-      await tx.delete(chatVoiceInboundCalls).where(and(eq(chatVoiceInboundCalls.id, id), due(Date.now())));
+      return (await tx.delete(chatVoiceInboundCalls).where(and(eq(chatVoiceInboundCalls.id, id), due(Date.now())))
+        .returning({ id: chatVoiceInboundCalls.id })).length > 0;
     });
+    if (deleted) return null;
     return (await load({ kind: "admission", id }, signal))[0] ?? null;
   }
   /** Explicit compatibility path; never register this bulk operation on a tick. */

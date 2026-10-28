@@ -1742,3 +1742,15 @@ server types/build and module boundaries pass. The [retention audit](2026-10-25-
 records the 13-path scope, real 105-row reconstruction, negative probe, setup and
 merge failures, and limits. Latest-head review, CI and parent landing remain
 required. Call-report reconciliation follows as a separate duty.
+
+
+## Retention notification review follow-up, October 28
+
+The current retention review found repeated configuration-driven history scans.
+Five real connection saves selected 1,025 rows across 205 retained admissions.
+Retention now wakes only for admission writes and startup; cleanup retains all
+of its broader scopes. The same writes select zero history rows and preserve the
+saved deadline. Confirmed deletes also avoid a redundant reload. The
+[retention review ledger](2026-10-25-voice-inbound-retention-sleep-audit.md#configuration-rescan-review-repair-october-28)
+records 282 passing cases, types/build, failures, writer coverage and limits.
+Current-head review/CI and the earlier stack remain required.

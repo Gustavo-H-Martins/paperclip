@@ -121,6 +121,15 @@ const support = external ? { supported: true } : await getEmbeddedPostgresTestSu
       await quiet();
     } finally { reads.mockRestore(); }
   });
+  it("settles a confirmed deletion without reloading the deleted history", async () => {
+    const call = await admission(), service = voiceInboundRetention(db);
+    const reads = vi.spyOn(db, "select");
+    try {
+      await expect(service.check(call.id)).resolves.toBeNull();
+      expect(reads).not.toHaveBeenCalled();
+    } finally { reads.mockRestore(); }
+    expect(await row(call.id)).toBeUndefined();
+  });
   it("leaves configured idle quiet and reacts to the first committed history", async () => {
     await start(); await flush(); expect(coordinator!.nextWakeAt()).toBeNull(); await quiet();
     const call = await admission(); await flush(); expect(await row(call.id)).toBeUndefined();

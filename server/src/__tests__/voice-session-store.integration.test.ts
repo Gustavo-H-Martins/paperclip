@@ -82,6 +82,53 @@ const support = external ? { supported: true } : await getEmbeddedPostgresTestSu
     return { companyId, endpointId, agentId, connectionId, issueId, conversationId, callerId, sessionId, store, request, reserved, accept, toolInput, publication };
   }
 
+  it("keeps retained history quiet when a voice connection configuration is saved repeatedly", async () => {
+    const f = await inboundFixture();
+    const ended = f.sign({ type: "call.status", call_id: f.call.providerSessionId, status: "ended" });
+    await f.service.inbound.lifecycle(f.endpoint.publicId, ended.body, ended.headers);
+    await db.insert(chatVoiceInboundCalls).values(Array.from({ length: 204 }, () => ({
+      ...f.call, id: randomUUID(), providerSessionId: randomUUID(), state: "ended" as const,
+      cleanupConfirmedAt: new Date(), updatedAt: new Date(),
+    })));
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"], shouldAdvanceTime: true });
+    const onError = vi.fn(), coordinator = createDeliveryWorkCoordinator({ owner: db, canRun: () => true, onError });
+    const expected = f.call.expiresAt.getTime() + 7 * 86_400_000;
+    const settle = () => vi.waitFor(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(idleWorkSnapshot().active).toBe(0);
+      expect(coordinator.nextWakeAt()).toBe(expected);
+    }, { timeout: 5000 });
+    let selected = 0;
+    const select = db.select.bind(db);
+    try {
+      await f.service.inbound.registerRetentionWork(coordinator, () => true).ready; await settle();
+      const reads = vi.spyOn(db, "select").mockImplementation((...args) => {
+        const selection = select(...args), from = selection.from.bind(selection);
+        vi.spyOn(selection, "from").mockImplementation(table => {
+          const query = from(table);
+          if (table === chatVoiceInboundCalls) {
+            const execute = query.execute.bind(query);
+            vi.spyOn(query, "execute").mockImplementation(async () => {
+              const rows = await execute(); selected += rows.length; return rows;
+            });
+          }
+          return query;
+        });
+        return selection;
+      });
+      try {
+        for (let index = 0; index < 5; index++) {
+          await toolAccessService(db).updateConnection(f.connectionId, { name: `Saved voice ${index}` });
+          await settle();
+        }
+        expect(selected).toBe(0); expect(onError).not.toHaveBeenCalled();
+      } finally { reads.mockRestore(); }
+    } finally {
+      await coordinator.stop(); vi.useRealTimers(); vi.restoreAllMocks();
+      await db.delete(chatVoiceInboundCalls).where(eq(chatVoiceInboundCalls.companyId, f.companyId));
+    }
+  });
+
   it("limits a new pre-call wake to its admission instead of scanning endpoint history", async () => {
     const f = await inboundFixture(); const hints: string[] = [];
     const unsubscribe = subscribeDatabaseWork(db, DELIVERY_QUEUES.voiceInboundRetention,
