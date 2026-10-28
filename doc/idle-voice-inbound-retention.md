@@ -8,7 +8,9 @@ cleanup is confirmed, and neither a session nor an intake task owns it. The
 existing policy retains it until both expiry and last update are seven days old:
 `max(expiresAt, updatedAt) + 7 days`. No new table or persisted state is added.
 
-The voice owner loads eligible deadlines on startup. The existing
+The voice owner reconstructs eligible deadlines on startup, yielding after at
+most 100 selected rows per scope refresh. Re-registering the same service resets
+its page cursor so a partial scan cannot skip old deadlines. The existing
 `notifyVoiceInbound` boundary now notifies cleanup and retention before writes.
 Outer transaction settlement wakes the workers. Rolled-back changes do not
 create retention work. Signed callbacks, rejection cleanup, approval/session
@@ -34,3 +36,8 @@ boundary. Independent SQL writers or additional processes require their own
 notification/recovery contract. This migration does not extend Cloud alarms or
 sleep eligibility: an in-process deadline cannot wake stopped compute. The
 external wake owner must cover retention before that deadline can permit sleep.
+
+
+The [current-parent acceptance](plans/2026-10-25-voice-inbound-retention-sleep-audit.md#current-parent-paging-and-restart-acceptance-october-28)
+records 280 distinct passing cases, the failed eager-reader baseline, a guarded
+restart regression, preserved fixture/merge failures and verification limits.

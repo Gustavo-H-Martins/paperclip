@@ -2,8 +2,8 @@ import { readFile } from "node:fs/promises";
 import { chatCompanyDeletion } from "../services/chat-channels/company-deletion.js";
 import { randomUUID } from "node:crypto";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { eq, sql } from "drizzle-orm";
-import { agents, chatConversations, chatEndpoints, chatVoiceInboundCalls, chatVoiceSessions, companies, createDb, issues, toolApplications, toolConnections } from "@paperclipai/db";
+import { eq } from "drizzle-orm";
+import { applyPendingMigrations, EMBEDDED_POSTGRES_TEST_TIMEOUT_MS, agents, chatConversations, chatEndpoints, chatVoiceInboundCalls, chatVoiceSessions, companies, createDb, issues, toolApplications, toolConnections } from "@paperclipai/db";
 import { getEmbeddedPostgresTestSupport, startEmbeddedPostgresTestDatabase } from "./helpers/embedded-postgres.js";
 import { resolveExternalTestDatabaseUrl } from "./helpers/external-test-database.js";
 import { createDeliveryWorkCoordinator } from "../services/delivery-work-coordinator.js";
@@ -23,8 +23,9 @@ const support = external ? { supported: true } : await getEmbeddedPostgresTestSu
   const terminate = vi.fn(async (_call: typeof chatVoiceInboundCalls.$inferSelect) => true);
   beforeAll(async () => {
     if (!external) temporary = await startEmbeddedPostgresTestDatabase("voice-inbound-cleanup-");
+    if (external) await applyPendingMigrations(external);
     db = createDb(external ?? temporary!.connectionString, { idleTimeoutSeconds: 0, maxLifetimeSeconds: 0 });
-  }, 60_000);
+  }, EMBEDDED_POSTGRES_TEST_TIMEOUT_MS);
   async function fixture() {
     const companyId = randomUUID(), endpointId = randomUUID(), agentId = randomUUID(), issueId = randomUUID(), conversationId = randomUUID();
     fixtureCompanies.push(companyId);
@@ -81,6 +82,43 @@ const support = external ? { supported: true } : await getEmbeddedPostgresTestSu
     try { await vi.advanceTimersByTimeAsync(ms); expect(reads).not.toHaveBeenCalled(); expect(writes).not.toHaveBeenCalled(); }
     finally { reads.mockRestore(); writes.mockRestore(); }
   }
+  it("bounds pending inventory pages and restores every deadline when the same owner restarts mid-scan", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"], shouldAdvanceTime: false });
+    const expiry = Date.now() + 60_000;
+    for (let index = 0; index < 105; index++) await admission({ expiresAt: new Date(expiry) });
+    const counts: number[] = [], select = db.select.bind(db);
+    const reads = vi.spyOn(db, "select").mockImplementation((...args) => {
+      const selection = select(...args), from = selection.from.bind(selection);
+      vi.spyOn(selection, "from").mockImplementation(table => {
+        const query = from(table);
+        if (table === chatVoiceInboundCalls) {
+          const execute = query.execute.bind(query);
+          vi.spyOn(query, "execute").mockImplementation(async () => {
+            const rows = await execute(); counts.push(rows.length); return rows;
+          });
+        }
+        return query;
+      });
+      return selection;
+    });
+    try {
+      const service = await start();
+      expect(counts.reduce((sum, count) => sum + count, 0)).toBe(100);
+      await coordinator!.stop(); coordinator = undefined;
+      const beforeRestart = counts.length;
+      await start(service);
+      expect(counts.slice(beforeRestart).reduce((sum, count) => sum + count, 0)).toBe(100);
+      await vi.advanceTimersByTimeAsync(1000);
+      await vi.waitFor(() => expect(coordinator!.nextWakeAt()).toBe(expiry), { interval: 0 });
+      expect(Math.max(...counts)).toBeLessThanOrEqual(100); reads.mockRestore();
+      await quiet(1000); expect(terminate).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(expiry - Date.now()); await settled();
+      expect(terminate).toHaveBeenCalledTimes(105);
+      expect((await db.select().from(chatVoiceInboundCalls).where(eq(chatVoiceInboundCalls.companyId, companyId)))
+        .every(call => call.cleanupConfirmedAt !== null)).toBe(true);
+      await quiet();
+    } finally { reads.mockRestore(); }
+  });
   it("leaves configured idle and confirmed history quiet", async () => {
     await admission({ state: "ended", cleanupConfirmedAt: new Date() });
     await start(); await settled(); await quiet(); expect(terminate).not.toHaveBeenCalled();
@@ -96,9 +134,9 @@ const support = external ? { supported: true } : await getEmbeddedPostgresTestSu
   it("backfills only provable legacy termination and preserves rejected cleanup debt", async () => {
     const confirmed = await admission({ state: "ended" });
     const uncertain = await admission({ state: "ended", approvedByUserId: randomUUID(), callerAuthority: "member" });
-    const migration = await readFile(new URL("../../../packages/db/src/migrations/0392_lying_trish_tilby.sql", import.meta.url), "utf8");
+    const migration = await readFile(new URL("../../../packages/db/src/migrations/0395_married_the_hand.sql", import.meta.url), "utf8");
     const backfill = migration.split("--> statement-breakpoint").at(-1)!;
-    await db.execute(sql.raw(backfill)); await db.execute(sql.raw(backfill));
+    await db.$client.unsafe(backfill); await db.$client.unsafe(backfill);
     expect((await db.select().from(chatVoiceInboundCalls).where(eq(chatVoiceInboundCalls.id, confirmed.id)))[0].cleanupConfirmedAt).not.toBeNull();
     expect((await db.select().from(chatVoiceInboundCalls).where(eq(chatVoiceInboundCalls.id, uncertain.id)))[0].cleanupConfirmedAt).toBeNull();
     await start(); await settled(); expect(terminate).toHaveBeenCalledOnce();

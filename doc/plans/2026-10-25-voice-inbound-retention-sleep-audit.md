@@ -1,9 +1,10 @@
 # Inbound voice history retention sleep audit
 
-Baseline: inbound cleanup PR #17580, head
+Original baseline: inbound cleanup PR #17580, head
 4b4bf2d8af6e08d3859ada4b720e7fbd3ea27e24.
 Branch: codex/sleep-24-voice-inbound-retention.
-Status: owner audit; implementation, tests, publication and acceptance pending.
+Current integrated parent: b8b12199b9185e6318319cceb9511f5285734e41.
+Status: implementation and local acceptance complete; current-head CI/review and parent landing remain required.
 
 ## One reason
 
@@ -160,3 +161,79 @@ failed to parse unresolved conflict markers; no voice cases ran. After preservin
 both sides and completing the merge, all 134 voice/app cases passed on that still
 unused voice database. Logs: `/tmp/sleep24-denial-acceptance.log` (parse failure),
 `/tmp/sleep24-denial-acceptance-fixed.log` (134 pass).
+
+
+## Current-parent paging and restart acceptance, October 28
+
+This revision normally merges cleanup parent `b8b12199b9185e6318319cceb9511f5285734e41`.
+It retains that parent's generated migration 0395, cleanup paging and approval
+repairs. The 13 original owned paths remain the complete slice. No database,
+shared worker, workflow, lockfile or provider protocol change belongs to retention.
+The plan merge preserved both dated histories. The automatic source merge added
+a duplicate DELIVERY_QUEUES test import; the first combined voice suite failed
+to parse before running any case. Removing only the duplicate import lets all
+126 full voice cases run and pass on the still-empty dedicated test database.
+That parse failure remains `/tmp/sleep24-final-voice-consumers.log`.
+
+### Bound reconstruction without changing retention policy
+
+The old retention reader performed all 100-row queries inside one load. A new
+105-row future-history fixture showed it selected 105 rows in startup's first
+pass, failing the 100-row budget. The worker now uses the parent's existing
+`{ rows, complete }` contract. It returns at most 100 rows per scope refresh and
+preserves the full explicit `load` API. It changes no seven-day calculation,
+submillisecond rounding, confirmation requirement or binding exclusion.
+
+Per-scope cursors advance only after successful reads and reset on registration.
+The new case stops after the first 100 of 105 future records, starts the same
+service owner, checks another initial 100 rows, reconstructs the original deadline,
+and deletes all 105 rows at that deadline. It observes SQL quiet before the
+actual deadline and after settlement. Removing just the reset makes restart read
+five rows and fails the budget assertion. The guarded mutation was restored
+before the complete lifecycle acceptance. Row measurements are selected rows,
+not PostgreSQL tuple visits or deployed costs.
+
+The external retention fixture also assumed a pre-existing schema. Its first
+empty-database run failed on missing companies/admission tables. It now applies
+the application migrations with the standard setup timeout. The first-pass
+budget then failed at the intended 105-versus-100 assertion before the reader
+repair. Both failures are retained in `/tmp/sleep24-empty-fixture-red.log` and
+`/tmp/sleep24-page-budget-red.log`.
+
+### Final evidence and limits
+
+280 distinct cases pass on the combined source:
+
+- All 126 voice-session integration cases, including actual signed ingress,
+  cleanup confirmation, scoped retention wake and maintenance-lane behavior.
+- All 154 cases in ten full retention, cleanup, parent recovery, company removal,
+  shared deadline/coordinator/batching, startup and hostname suites. This includes
+  12 retention and 14 cleanup lifecycle cases. Voice integration, parent recovery
+  and company removal use separate initially empty databases and migrate themselves.
+  Retention uses its dedicated database after the fresh-setup repair. Cleanup
+  uses its already-migrated dedicated database. These suites do not share fixture
+  state with a live application.
+
+Server typecheck, build and the module-boundary check pass. Logs:
+`/tmp/sleep24-final-voice-consumers-fixed.log`,
+`/tmp/sleep24-final-lifecycle-consumers.log`,
+`/tmp/sleep24-final-current-types.log`, `/tmp/sleep24-final-current-build.log`, and
+`/tmp/sleep24-final-module-boundaries.log`. The passing initial 12-case retention
+run is `/tmp/sleep24-bounded-retention-first-green.log`; it is included in the
+154, not counted twice. The guarded restart failure is
+`/tmp/sleep24-cursor-reset-mutant-red.log`.
+
+Older 218/133/134-case and workspace-wide results apply to their stated heads.
+No new complete local repository suite, live provider, Cloud wake, host/database
+suspension or savings claim is made. Independent writers still need an explicit
+wake integration. Call reports remain their own duty. Current-head reviews,
+all CI and earlier stack landing remain required; an older passing score or
+inherited local acceptance cannot replace these gates.
+
+
+The prior published head `daca270a99` had a failed server (4/12) check in run
+40557790710, job 122386307340. Its actual log records a runner shutdown signal
+and operation cancellation before the suite completed. This is incomplete
+acceptance, not a passing run or an established product flake. The trusted runner
+selection also had a cancelled check. The source failure log is preserved at
+`/tmp/sleep24-daca-server4-failed.log`. New-head CI must complete independently.

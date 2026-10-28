@@ -15,27 +15,40 @@ const due = (now: number) => and(eligible(), lte(chatVoiceInboundCalls.expiresAt
 /** Retain the existing seven-day policy for both timestamps. SQL rounds the wake
  * up to a millisecond so PostgreSQL submillisecond timestamps cannot fire early. */
 export function voiceInboundRetention(db: Db) {
+  const cursors = new Map<string, string>();
+  async function page(scope?: VoiceInboundScope, cursor?: string, signal?: AbortSignal): Promise<RetentionEntry[]> {
+    signal?.throwIfAborted();
+    if (scope?.kind === "session") return [];
+    const rows = await db.select({ id: chatVoiceInboundCalls.id, companyId: chatVoiceInboundCalls.companyId,
+      endpointId: chatVoiceInboundCalls.endpointId, connectionId: chatEndpoints.connectionId,
+      dueAt: sql<string>`ceil(extract(epoch from greatest(${chatVoiceInboundCalls.expiresAt}, ${chatVoiceInboundCalls.updatedAt})) * 1000) + ${RETENTION_MS}`,
+    }).from(chatVoiceInboundCalls)
+      .innerJoin(chatEndpoints, and(eq(chatEndpoints.id, chatVoiceInboundCalls.endpointId), eq(chatEndpoints.companyId, chatVoiceInboundCalls.companyId)))
+      .where(and(eligible(),
+        scope?.kind === "admission" ? eq(chatVoiceInboundCalls.id, scope.id) : undefined,
+        scope?.kind === "endpoint" ? eq(chatVoiceInboundCalls.endpointId, scope.id) : undefined,
+        scope?.kind === "connection" ? eq(chatEndpoints.connectionId, scope.id) : undefined,
+        scope?.kind === "company" ? eq(chatVoiceInboundCalls.companyId, scope.id) : undefined,
+        cursor ? gt(chatVoiceInboundCalls.id, cursor) : undefined)).orderBy(chatVoiceInboundCalls.id).limit(100);
+    signal?.throwIfAborted();
+    return rows.map(row => ({ ...row, dueAt: Number(row.dueAt) }));
+  }
   async function load(scope?: VoiceInboundScope, signal?: AbortSignal): Promise<RetentionEntry[]> {
-    if (scope?.kind === "session") return []; // Bound call history is never ours.
     const entries: RetentionEntry[] = [];
     let cursor: string | undefined;
     for (;;) {
-      signal?.throwIfAborted();
-      const rows = await db.select({ id: chatVoiceInboundCalls.id, companyId: chatVoiceInboundCalls.companyId,
-        endpointId: chatVoiceInboundCalls.endpointId, connectionId: chatEndpoints.connectionId,
-        dueAt: sql<string>`ceil(extract(epoch from greatest(${chatVoiceInboundCalls.expiresAt}, ${chatVoiceInboundCalls.updatedAt})) * 1000) + ${RETENTION_MS}`,
-      }).from(chatVoiceInboundCalls)
-        .innerJoin(chatEndpoints, and(eq(chatEndpoints.id, chatVoiceInboundCalls.endpointId), eq(chatEndpoints.companyId, chatVoiceInboundCalls.companyId)))
-        .where(and(eligible(),
-          scope?.kind === "admission" ? eq(chatVoiceInboundCalls.id, scope.id) : undefined,
-          scope?.kind === "endpoint" ? eq(chatVoiceInboundCalls.endpointId, scope.id) : undefined,
-          scope?.kind === "connection" ? eq(chatEndpoints.connectionId, scope.id) : undefined,
-          scope?.kind === "company" ? eq(chatVoiceInboundCalls.companyId, scope.id) : undefined,
-          cursor ? gt(chatVoiceInboundCalls.id, cursor) : undefined)).orderBy(chatVoiceInboundCalls.id).limit(100);
-      entries.push(...rows.map(row => ({ ...row, dueAt: Number(row.dueAt) })));
+      const rows = await page(scope, cursor, signal);
+      entries.push(...rows);
       if (rows.length < 100) return entries;
       cursor = rows[rows.length - 1].id;
     }
+  }
+  async function refresh(scope?: VoiceInboundScope, signal?: AbortSignal) {
+    const key = scope ? `${scope.kind}:${scope.id}` : "*";
+    const rows = await page(scope, cursors.get(key), signal), complete = rows.length < 100;
+    signal?.throwIfAborted();
+    if (complete) cursors.delete(key); else cursors.set(key, rows[rows.length - 1].id);
+    return { rows, complete };
   }
   async function check(id: string, signal?: AbortSignal): Promise<RetentionEntry | null> {
     signal?.throwIfAborted();
@@ -55,10 +68,11 @@ export function voiceInboundRetention(db: Db) {
     await db.delete(chatVoiceInboundCalls).where(due(Date.now()));
   }
   function register(coordinator: ReturnType<typeof createDeliveryWorkCoordinator>, canRun: () => boolean) {
+    cursors.clear();
     return registerScopedDeadlineWork(coordinator, {
       queue: DELIVERY_QUEUES.voiceInboundRetention, decodeScope: voiceInboundScope,
       matches: (entry, scope) => !scope || scope.kind !== "session" && (scope.kind === "admission" ? entry.id : scope.kind === "endpoint" ? entry.endpointId : scope.kind === "connection" ? entry.connectionId : entry.companyId) === scope.id,
-      load, check: (entry, signal) => check(entry.id, signal),
+      load: refresh, check: (entry, signal) => check(entry.id, signal),
     }, canRun);
   }
   return { load, check, prune, register };
