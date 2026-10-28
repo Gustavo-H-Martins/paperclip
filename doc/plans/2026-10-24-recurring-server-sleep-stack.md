@@ -1629,3 +1629,11 @@ extraction now supports the parent's paged result contract. The real inherited
 targeted cases, production typecheck and server build pass. The [reply audit](2026-10-25-voice-reply-delivery-sleep-audit.md#current-parent-paging-contract-acceptance-october-27)
 records the 31-file scope and effects on the four existing shared consumers.
 Current-head review, CI and parent landing remain required.
+
+## Voice trusted-policy checkout repair, October 27
+
+Receiver `ab39569250` supplies the landed policy checker now required by trusted
+CI. Voice server/package code and tests remain identical to the 725-case tested
+head. The policy checker and its Node tests pass. The [voice audit](2026-10-25-voice-maintenance-sleep-audit.md#trusted-policy-checkout-compatibility-october-27)
+keeps the four old failed gates, including the independent runner shutdown,
+separate from current local evidence. Fresh review and CI remain required.

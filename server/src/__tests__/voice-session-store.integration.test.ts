@@ -3,6 +3,7 @@ import { voiceReplySchedule } from "../services/voice/voice-reply-schedule.js";
 import { registerVoiceReplyWork } from "../services/voice/voice-reply-work.js";
 import { pushVoiceReplies } from "../services/voice/voice-reply-push.js";
 import { notifyVoiceReplies } from "../services/voice/voice-reply-notifications.js";
+import { DELIVERY_QUEUES, subscribeDeliveryWork } from "../services/delivery-work-notifications.js";
 import { toolAccessService } from "../services/tool-access.js";
 import { createDeliveryWorkCoordinator } from "../services/delivery-work-coordinator.js";
 import { idleWorkSnapshot } from "../services/task-admission.js";
@@ -706,8 +707,26 @@ const support = external ? { supported: true } : await getEmbeddedPostgresTestSu
     const push = () => f.service.pushReplies(25, f.companyId, f.endpointId);
     return {...f, session, publication, push};
   }
-  async function replyWorker(f: Awaited<ReturnType<typeof pushFixture>>, canRun = () => true) {
-    const service = voiceReplySchedule(db, { store: f.store, push: sessionId => pushVoiceReplies(db, {
+  function replyInventoryReads() {
+    const counts: number[] = [], select = db.select.bind(db);
+    const measurement = vi.spyOn(db, "select").mockImplementation((...args) => {
+      const selection = select(...args), from = selection.from.bind(selection);
+      vi.spyOn(selection, "from").mockImplementation(table => {
+        const query = from(table);
+        if ((table === chatVoiceSessions || table === chatActions) && args[0] && "connectionId" in args[0]) {
+          const execute = query.execute.bind(query);
+          vi.spyOn(query, "execute").mockImplementation(async () => {
+            const rows = await execute(); counts.push(rows.length); return rows;
+          });
+        }
+        return query;
+      });
+      return selection;
+    });
+    return { counts, stop: () => measurement.mockRestore() };
+  }
+  async function replyWorker(f: Awaited<ReturnType<typeof pushFixture>>, canRun = () => true, existing?: ReturnType<typeof voiceReplySchedule>) {
+    const service = existing ?? voiceReplySchedule(db, { store: f.store, push: sessionId => pushVoiceReplies(db, {
       store: f.store, credentials: f.credentials, provider: () => f.transport, limit: 1, sessionId, recoverDispatches: false,
     }) });
     const onError = vi.fn();
@@ -843,6 +862,46 @@ const support = external ? { supported: true } : await getEmbeddedPostgresTestSu
       await worker.quiet(); expect(worker.onError).not.toHaveBeenCalled();
     } finally { await worker.coordinator.stop(); vi.useRealTimers(); }
   });
+  it.each(["normal publication", "operator resolution"] as const)("bounds inventory reads for repeated actual %s with unrelated calls and dispatches", async path => {
+    const f = await pushFixture(); await f.push();
+    const [source] = await db.select().from(chatVoiceSessions).where(eq(chatVoiceSessions.id, f.session.id));
+    const identities = Array.from({ length: 105 }, () => ({ id: randomUUID(), conversationId: randomUUID() }));
+    await db.insert(chatConversations).values(identities.map(row => ({ id: row.conversationId, companyId: f.companyId,
+      endpointId: f.endpointId, issueId: f.issueId, externalConversationId: row.conversationId,
+      externalThreadId: row.conversationId, externalLabel: "Unrelated call", isDirectMessage: true })));
+    await db.insert(chatVoiceSessions).values(identities.map(row => ({ ...source, ...row, callerId: row.id,
+      providerSessionId: row.id, idempotencyKey: row.id, requestFingerprint: row.id })));
+    await db.insert(chatActions).values(identities.map(row => ({ companyId: f.companyId, endpointId: f.endpointId,
+      conversationId: row.conversationId, kind: "speko_voice_reply_push", providerActionId: row.id, status: "dispatching",
+      payload: { sessionId: row.id, replyId: randomUUID() }, updatedAt: new Date(Date.now() + 3_600_000) })));
+    const chat = chatChannelService(db, { heartbeat: { wakeup: vi.fn() } });
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"], shouldAdvanceTime: true });
+    const worker = await replyWorker(f);
+    let stopMeasurement: (() => void) | undefined;
+    try {
+      const settle = () => vi.waitFor(async () => {
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(idleWorkSnapshot().active).toBe(0);
+        expect(worker.coordinator.nextWakeAt()).toBeGreaterThan(Date.now() + 60_000);
+      }, { timeout: 5000 });
+      await settle(); await worker.quiet(2000);
+      const reads = replyInventoryReads(), counts = reads.counts;
+      stopMeasurement = reads.stop;
+      const before = f.transport.sendCallMessage.mock.calls.length;
+      for (let index = 0; index < 5; index++) {
+        const [publication] = await db.insert(chatPublications).values({ companyId: f.companyId, endpointId: f.endpointId,
+          conversationId: f.conversationId, issueId: f.issueId, idempotencyKey: randomUUID(),
+          state: path === "normal publication" ? "pending" : "delivery_unknown", payload: { text: `Answer ${index}` } }).returning();
+        if (path === "normal publication") await chat.processPendingPublications(25, { maintenance: false });
+        else await chat.resolvePublication(f.endpointId, publication.id, "mark_delivered", f.callerId);
+        await settle();
+        expect(f.transport.sendCallMessage).toHaveBeenCalledTimes(before + index + 1);
+      }
+      expect(counts.reduce((sum, count) => sum + count, 0)).toBeLessThanOrEqual(5 * 25);
+      stopMeasurement(); stopMeasurement = undefined;
+      await worker.quiet(2000); expect(worker.onError).not.toHaveBeenCalled();
+    } finally { stopMeasurement?.(); await worker.coordinator.stop(); await chat.shutdown(); vi.useRealTimers(); }
+  });
   it.each(["normal publication", "operator resolution"] as const)("wakes phone delivery from actual %s after its early enqueue has gone idle", async path => {
     const f = await pushFixture();
     await db.update(chatPublications).set({ state: path === "normal publication" ? "pending" : "delivery_unknown" })
@@ -876,20 +935,61 @@ const support = external ? { supported: true } : await getEmbeddedPostgresTestSu
       release(); await publishing; notification.mockRestore(); await worker.coordinator.stop(); await chat.shutdown(); vi.useRealTimers();
     }
   });
-  it("reconstructs and quarantines every abandoned phone dispatch across inventory and work batches", async () => {
+  it("bounds abandoned-dispatch pages and reconstructs the same service after a partial-scan restart", async () => {
     const f = await pushFixture();
     await db.update(chatVoiceSessions).set({ state: "ended", endedAt: new Date() }).where(eq(chatVoiceSessions.id, f.session.id));
     await db.insert(chatActions).values(Array.from({ length: 105 }, () => ({ companyId: f.companyId, endpointId: f.endpointId,
       conversationId: f.conversationId, kind: "speko_voice_reply_push", providerActionId: randomUUID(), status: "dispatching",
-      payload: { sessionId: f.session.id, replyId: randomUUID() }, updatedAt: new Date(Date.now() - 60_000) })));
+      payload: { sessionId: f.session.id, replyId: randomUUID() }, updatedAt: new Date(Date.now() + 60_000) })));
     vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"], shouldAdvanceTime: true });
-    const worker = await replyWorker(f);
+    const reads = replyInventoryReads();
+    let worker: Awaited<ReturnType<typeof replyWorker>> | undefined;
     try {
+      worker = await replyWorker(f);
+      expect(reads.counts.reduce((sum, count) => sum + count, 0)).toBe(100);
+      expect(worker.onError).not.toHaveBeenCalled();
+      const service = worker.service;
+      await worker.coordinator.stop();
+      const beforeRestart = reads.counts.length;
+      worker = await replyWorker(f, () => true, service);
+      expect(reads.counts.slice(beforeRestart).reduce((sum, count) => sum + count, 0)).toBe(100);
+      await vi.waitFor(async () => {
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(idleWorkSnapshot().active).toBe(0);
+        expect(worker!.coordinator.nextWakeAt()).toBeGreaterThan(Date.now() + 60_000);
+      });
+      expect(Math.max(...reads.counts)).toBeLessThanOrEqual(100);
+      reads.stop(); await worker.quiet(1000);
+      await vi.advanceTimersByTimeAsync(worker.coordinator.nextWakeAt()! - Date.now());
       await worker.settled();
       const actions = await db.select().from(chatActions).where(eq(chatActions.endpointId, f.endpointId));
       expect(actions).toHaveLength(105); expect(actions.every(action => action.status === "unknown")).toBe(true);
-      expect(f.transport.sendCallMessage).not.toHaveBeenCalled(); await worker.quiet(); expect(worker.onError).not.toHaveBeenCalled();
-    } finally { await worker.coordinator.stop(); vi.useRealTimers(); }
+      expect(f.transport.sendCallMessage).not.toHaveBeenCalled(); reads.stop(); await worker.quiet(); expect(worker.onError).not.toHaveBeenCalled();
+    } finally { reads.stop(); await worker?.coordinator.stop(); vi.useRealTimers(); }
+  });
+  it("preserves a blocked call first observed behind an in-progress reconstruction cursor", async () => {
+    const f = await pushFixture(); await f.push();
+    const [source] = await db.select().from(chatVoiceSessions).where(eq(chatVoiceSessions.id, f.session.id));
+    await db.insert(chatVoiceSessions).values(Array.from({ length: 105 }, () => {
+      const id = `8${randomUUID().slice(1)}`;
+      return { ...source, id, callerId: id, providerSessionId: id, idempotencyKey: id, requestFingerprint: id };
+    }));
+    const service = voiceReplySchedule(db, { store: f.store, push: vi.fn() });
+    const scope = { kind: "company", id: f.companyId } as const;
+    expect((await service.load(scope)).complete).toBe(false);
+    const id = `00000000-0000-0000-0000-${randomUUID().slice(-12)}`;
+    await db.insert(chatVoiceSessions).values({ ...source, id, callerId: id, providerSessionId: id,
+      idempotencyKey: id, requestFingerprint: id });
+    const { rows } = await service.load({ kind: "session", id });
+    expect(rows).toHaveLength(1);
+    await expect(db.transaction(tx => f.store.authorizeSession(tx, f.companyId, id))).rejects.toMatchObject({ status: 403 });
+    expect(await service.check(rows[0])).toBeNull();
+    while (!(await service.load(scope)).complete) {}
+    const wake = vi.fn(), unsubscribe = subscribeDeliveryWork(db, DELIVERY_QUEUES.voiceReplies, wake);
+    try {
+      await db.transaction(tx => service.authorityAvailable(tx, id));
+      await vi.waitFor(() => expect(wake).toHaveBeenCalledOnce());
+    } finally { unsubscribe(); }
   });
   it("retains phone reply work after a failed state read and retries without intervening scans", async () => {
     const f = await pushFixture();

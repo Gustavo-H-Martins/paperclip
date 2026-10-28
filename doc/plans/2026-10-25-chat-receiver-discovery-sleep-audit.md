@@ -337,3 +337,15 @@ changes follow the passing source. Expected controlled provider failures and
 startup signal-listener warnings remain recorded. Fresh exact-head review and
 all CI must pass before this child lands after Discord. No deployed sleep or
 full local suite result is inferred from these checks.
+
+
+## Compatibility after Discord squash merge, October 27
+
+Discord #17557 landed at `5bf0142d45`. The normal merge of that master caused
+ancestry conflicts in overlapping producer paths. Resolution applies only the
+recorded 27-file receiver patch from Discord parent `547fdf2139` to actual landed
+master. Every server and package production/test file is byte-identical to the
+published `6e88ca0201` source that passes 131 cases, typecheck and build. No source
+verification is rerun merely for unrelated upstream UI/eval/documentation changes.
+The PR-owned delta passes its whitespace check. This integration records that
+proof and requires fresh exact-head review and CI before merging into master.

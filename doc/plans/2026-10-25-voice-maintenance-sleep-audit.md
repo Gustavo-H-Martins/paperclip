@@ -241,3 +241,22 @@ passes all 469. Tests are not counted twice. Expected controlled failures and
 listener warnings remain in logs. Only documentation changes follow these checks.
 Fresh current-head reviews, CI and parent landing remain required. No full local
 matrix, provider acceptance, external wake or deployed sleep result is claimed.
+
+
+## Trusted-policy checkout compatibility, October 27
+
+CI run `40632057899` on `712f3862b5` failed policy because the trusted workflow
+had acquired `scripts/check-query-error-rendering.mjs` from newer master, while
+the checked-out PR head lacked that script. The build job separately received
+a runner shutdown signal during runtime bundling, then reported cancellation.
+The underlying shutdown cause is not established. The E2E aggregate reports
+`E2E_SHARDS_RESULT=success` but fails on `POLICY_RESULT=failure`; verification
+also fails on policy and build. Those four failed gates are not passing results.
+
+A normal merge of receiver `ab39569250` brings the landed UI and policy tooling
+into the checkout. Every server/package production and test file remains
+byte-identical to the 725-case tested `712f3862b5` source. The policy checker now
+executes successfully, and its complete Node test file passes locally. No sleep
+implementation, test assertion or workflow gate is weakened. Fresh CI must prove
+the full build and aggregate gates; the interrupted build is not relabeled as a
+pass. Fresh Ponytail and Greptile acceptance still precede any merge.
