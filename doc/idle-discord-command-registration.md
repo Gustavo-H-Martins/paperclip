@@ -188,3 +188,23 @@ The earlier failed baselines and remote CI history above remain evidence for
 their stated revisions. Fresh current-head reviews and all CI are required, and
 both prerequisites must land before this child can merge into master. This does
 not establish host suspension, external Cloud alarms, or provider cost savings.
+
+
+## Acceptance after the company-deletion parent landed, October 27
+
+The branch integrates master at `f8563d25077b17681ab6ef5949f7b07415a58ede`,
+including the landed health and company-deletion repairs. Squash ancestry caused
+merge conflicts. Resolution applies only this slice's exact 26-file patch from
+its recorded parent `21be75d2b0` to that pinned master. Every other file matches
+master. The migration 0394 and current lockfile remain unchanged by this slice.
+
+All 141 distinct targeted cases pass: 78 command-store, batching, coordinator and
+startup-timing cases; 8 real automatic Discord and held-transaction Slack cases;
+and 55 complete startup/export and company-deletion cases. The company-deletion
+fixture starts on an initially empty isolated database and applies migrations.
+The two Discord fixtures use separate migrated database clones. The remaining
+1,581 chat integration cases were deselected. Server typecheck and build pass.
+The startup suite retains the existing signal-listener warnings without an
+assertion failure. Source files did not change after these results; subsequent
+edits record this acceptance. No full local matrix or deployed sleep is claimed.
+Fresh exact-head reviews and CI remain required before merge.

@@ -316,3 +316,24 @@ underlying host, resource, or network cause, and the interrupted job is not a
 passing result. The new parent integration and fixture repairs require a fresh
 full CI run; local passes do not replace it. Fresh exact-head Greptile and
 Ponytail reviews remain mandatory. No deployed sleep or full local suite is claimed.
+
+
+## Landed-foundation integration acceptance, October 27
+
+This slice normally integrates Discord parent `547fdf2139`, which contains
+master `f8563d2507` and landed company-deletion fixes. The original 27-file
+scope is unchanged. All owned source matches its precise original patch applied
+to that parent. The shared queue catalog also preserves master's task-drain and
+native-checkpoint declarations. An initial whole-file identity assertion rejected
+those expected parent additions; the corrected proof checks the actual owned
+patch against the integrated parent. No failed verification is counted as a pass.
+
+The complete five worker/shared-consumer suites pass 99 cases. Real Discord and
+Slack producers pass 12 cases; the complete Photon suite passes 20. This is 131
+distinct targeted cases, with 1,581 chat cases deselected. Receiver and Photon
+self-migrate separate initially empty databases. The large chat fixture uses a
+separate migrated clone. Server typecheck and build pass. Only documentation
+changes follow the passing source. Expected controlled provider failures and
+startup signal-listener warnings remain recorded. Fresh exact-head review and
+all CI must pass before this child lands after Discord. No deployed sleep or
+full local suite result is inferred from these checks.

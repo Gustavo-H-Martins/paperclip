@@ -1543,3 +1543,19 @@ proofs, 131 targeted cases pass, and both newly supported external fixtures
 self-migrate. See [the owning audit](2026-10-25-chat-receiver-discovery-sleep-audit.md#current-parent-and-review-acceptance-october-27)
 for exact evidence and the older CI runner-loss failure. Fresh CI/reviews and
 parent landing are still required. The original remaining-duty inventory is unchanged.
+
+
+## Discord registration landing compatibility, October 27
+
+Company deletion has landed. The Discord command slice retains only its original
+26-file delta against the landed parent and current master at `f8563d2507`. All
+141 targeted cases, server typecheck and build pass. The [owning audit](2026-10-25-discord-command-registration-sleep-audit.md#acceptance-after-the-company-deletion-parent-landed-october-27)
+records exact scope, fixture setup and remaining remote gates.
+
+
+## Receiver integration with landed foundations, October 27
+
+Receiver discovery keeps its 27-file scope on Discord parent `547fdf2139` and
+preserves current master queue declarations. All 131 targeted cases, server
+typecheck and build pass. See the [receiver audit](2026-10-25-chat-receiver-discovery-sleep-audit.md#landed-foundation-integration-acceptance-october-27).
+Fresh exact-head review, CI and parent landing remain required.
